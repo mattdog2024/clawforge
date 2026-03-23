@@ -1,0 +1,1083 @@
+/**
+ * Lightweight i18n system for Forge.
+ * Supports Chinese (zh) and English (en).
+ */
+
+export type Locale = 'zh' | 'en'
+
+const translations: Record<Locale, Record<string, string>> = {
+  zh: {
+    // App
+    'app.name': '废虾',
+
+    // Sidebar
+    'sidebar.chat': '对话',
+    'sidebar.manage': '管理',
+    'sidebar.im': 'IM 通道',
+    'sidebar.schedule': '定时任务',
+    'sidebar.marketplace': '模板市场',
+    'sidebar.settings': '设置',
+    'sidebar.newSession': '新会话',
+    'sidebar.sessions': '会话列表',
+    'sidebar.workspace': '工作区',
+    'sidebar.noSessions': '暂无会话',
+    'sidebar.mainAgent': '主 Agent',
+    'sidebar.openProject': '打开项目文件夹',
+    'sidebar.recentProjects': '最近项目',
+
+    // Chat
+    'chat.newSession': '新会话',
+    'chat.startConversation': '开始新对话',
+    'chat.sendMessage': '发送消息开始聊天',
+    'chat.placeholder': '输入消息...',
+    'chat.shiftEnter': 'Shift+Enter 换行',
+    'chat.export': '导出会话',
+    'chat.permissionRequired': '需要权限',
+    'chat.permissionDenied': '权限已拒绝',
+    'chat.permissionGranted': '权限已允许',
+    'chat.permissionTimeout': '权限超时',
+    'chat.allow': '允许',
+    'chat.allowSession': '本次会话允许',
+    'chat.deny': '拒绝',
+
+    // Settings
+    'settings.title': '设置',
+    'settings.modelApi': '模型和 API',
+    'settings.modelApiDesc': '配置 API 提供商和模型设置。',
+    'settings.permission': '权限',
+    'settings.permissionDesc': '控制 Forge 处理危险操作的方式。',
+    'settings.project': '项目',
+    'settings.projectDesc': '工作区和记忆设置。',
+    'settings.workspace': '工作区',
+    'settings.scheduledTasks': '定时任务',
+    'settings.appearance': '外观',
+    'settings.appearanceDesc': '主题、语言和字体设置。',
+    'settings.data': '数据',
+    'settings.dataDesc': '存储、导出和数据管理。',
+    'settings.advanced': '高级',
+    'settings.export': '导出',
+    'settings.exportDesc': '导出为 JSON 或 Markdown 格式',
+    'settings.clearAll': '清除所有数据',
+    'settings.clearAllDesc': '删除所有会话、设置和文件（需要二次确认）',
+    'settings.clearConfirm': '再次点击确认 — 此操作不可撤销！',
+    'settings.confirmClear': '确认清除',
+    'settings.clearing': '清除中...',
+    'settings.theme': '主题',
+    'settings.themeDesc': '深色 / 浅色 / 跟随系统',
+    'settings.language': '语言',
+    'settings.languageDesc': '中文 / English',
+    'settings.fontSize': '字体大小',
+    'settings.fontSizeDesc': '聊天区字体大小',
+    'settings.codeTheme': '代码高亮主题',
+    'settings.codeThemeDesc': '代码块语法高亮配色方案',
+    'settings.defaultModel': '默认模型',
+    'settings.defaultModelDesc': '新会话使用的默认模型',
+    'settings.desktopPermission': '桌面权限模式',
+    'settings.desktopPermissionDesc': '确认模式需要批准危险操作',
+    'settings.imPermission': 'IM 权限模式',
+    'settings.imPermissionDesc': 'IM 通道交互的权限模式',
+    'settings.approvalTimeout': '审批超时',
+    'settings.memoryRetention': '日常记忆保留',
+    'settings.memoryRetentionDesc': '归档较旧的日常记忆文件',
+    'settings.thinkingMode': '思考模式',
+    'settings.thinkingModeDesc': '复杂任务的扩展思考',
+    'settings.effortLevel': '推理深度',
+    'settings.effortLevelDesc': '速度与质量的平衡',
+    'settings.baseUrl': 'Base URL',
+    'settings.baseUrlDesc': '私有部署的自定义地址',
+    'settings.dataDir': '数据目录',
+    'settings.openFolder': '打开',
+    'settings.sessionRetention': '会话保留',
+    'settings.sessionRetentionDesc': '自动清理超过 X 天的会话',
+    'settings.exportSessions': '导出会话',
+    'settings.exportSessionsDesc': '导出为 JSON 或 Markdown',
+    'settings.providers': '提供商',
+    'settings.addCustomProvider': '添加自定义提供商',
+    'settings.testConnection': '测试连接',
+
+    'contextMenu.archive': '归档',
+
+    // Right sidebar
+    'rightSidebar.workspace': '工作区',
+    'rightSidebar.agentStatus': 'Agent 状态',
+    'rightSidebar.toolLog': '工具日志',
+    'rightSidebar.noFiles': '暂无文件',
+    'rightSidebar.expand': '展开右侧栏',
+    'rightSidebar.collapse': '折叠右侧栏',
+
+    // Manage
+    'manage.skills': '技能',
+    'manage.agents': 'Agent',
+    'manage.mcp': 'MCP',
+
+    // Marketplace
+    'marketplace.title': '模板市场',
+    'marketplace.newTemplate': '新建模板',
+    'marketplace.noTemplates': '暂无模板',
+    'marketplace.noTemplatesDesc': '点击 + 创建你的第一个模板',
+    'marketplace.useTemplate': '使用此模板',
+    'marketplace.selectTemplate': '选择一个模板查看内容',
+    'marketplace.selectFile': '选择文件进行编辑',
+    'marketplace.searchTemplates': '搜索模板...',
+    'marketplace.templateNamePlaceholder': '模板名称...',
+    'marketplace.selectProjectFolder': '选择项目文件夹',
+    'marketplace.creatingProject': '正在创建项目...',
+    'marketplace.projectCreated': '项目已创建',
+    'marketplace.noFiles': '模板内暂无文件',
+
+    // Schedule
+    'schedule.title': '定时任务',
+    'schedule.newTask': '新任务',
+    'schedule.heartbeat': '心跳',
+    'schedule.cronTasks': 'Cron 任务',
+    'schedule.executionHistory': '执行历史',
+    'schedule.checkNow': '立即检查',
+    'schedule.engineRunning': '引擎运行中',
+    'schedule.engineStopped': '引擎已停止',
+
+    // Onboarding
+    'onboarding.welcome': '欢迎使用 Forge',
+    'onboarding.welcomeDesc': '你的本地 AI Agent 工作站。让我们花几步完成初始设置。',
+    'onboarding.getStarted': '开始',
+    'onboarding.whatName': '怎么称呼你？',
+    'onboarding.nameDesc': '这有助于个性化你的体验。',
+    'onboarding.whatDo': '你做什么工作？',
+    'onboarding.roleDesc': '这有助于 Forge 定制回复内容。',
+    'onboarding.howRespond': '你希望我怎么回复？',
+    'onboarding.styleDesc': '选择你偏好的交流风格。',
+    'onboarding.connectApi': '连接 API',
+    'onboarding.apiDesc': '输入你的 Anthropic API Key 开始对话。',
+    'onboarding.skip': '跳过',
+    'onboarding.next': '下一步',
+    'onboarding.finish': '完成',
+    'onboarding.settingUp': '设置中...',
+    'onboarding.apiNote': '你也可以之后在设置中配置。Key 仅存储在本地。',
+
+    // IM
+    'im.title': 'IM 通道',
+    'im.connected': '已连接',
+    'im.disconnected': '已断开',
+    'im.notConfigured': '未配置',
+    'im.error': '错误',
+    'im.connect': '连接',
+    'im.disconnect': '断开',
+    'im.dmPolicy': '私聊策略',
+    'im.groupPolicy': '群组策略',
+    'im.triggerMode': '触发模式',
+
+    // Model
+    'model.switch': '切换模型',
+
+    // Tool Log
+    'toolLog.title': '工具活动',
+    'toolLog.running': '运行中',
+    'toolLog.success': '成功',
+    'toolLog.error': '错误',
+
+    // Search
+    'search.sessions': '搜索会话...',
+    'search.skills': '搜索技能...',
+    'search.projects': '筛选项目...',
+
+    // Context Menu
+    'contextMenu.rename': '重命名',
+    'contextMenu.delete': '删除',
+
+    // Empty State
+    'emptyState.startChatting': '发送消息开始聊天',
+    'emptyState.reviewProject': '帮我审查这个项目',
+    'emptyState.writeFunction': '写一个函数来...',
+    'emptyState.explainCode': '解释这段代码是如何工作的',
+    'emptyState.findBugs': '帮我找出代码中的 bug',
+
+    // Project
+    'project.folderMissing': '文件夹不存在',
+    'project.folderDeletedConfirm': '文件夹已被删除，是否从列表移除？',
+
+    // Common
+    'common.save': '保存',
+    'common.cancel': '取消',
+    'common.create': '创建',
+    'common.delete': '删除',
+    'common.enabled': '已启用',
+    'common.disabled': '已禁用',
+    'common.loading': '加载中...',
+    'common.confirm': '确认',
+    'common.comingSoon': '即将推出',
+    'common.rename': '重命名',
+
+    // Buttons
+    'button.copyCode': '复制代码',
+    'button.copy': '复制',
+    'button.copied': '已复制',
+    'button.closeEditor': '关闭编辑器',
+    'button.projects': '项目',
+    'button.expandSidebar': '展开侧栏',
+    'button.collapseSidebar': '折叠侧栏',
+    'button.newFile': '新建文件',
+    'button.newFolder': '新建文件夹',
+    'button.exportSession': '导出会话',
+    'button.attachFile': '添加附件',
+    'button.search': '搜索',
+    'button.newConfigFile': '新建配置文件',
+    'button.newAgentFile': '新建 Agent 文件',
+    'button.addServer': '添加服务器',
+    'button.addCustomProvider': '添加自定义提供商',
+    'button.addProvider': '添加提供商',
+    'button.adding': '添加中...',
+    'button.changeFolder': '更改文件夹',
+    'button.save': '保存',
+
+    // Input placeholders
+    'input.reply': '回复...',
+    'input.search': '搜索...',
+    'input.searchFiles': '搜索文件...',
+    'input.searchSkills': '搜索技能...',
+    'input.fileName': '文件名...',
+    'input.folderName': '文件夹名...',
+    'input.addDescription': '添加描述...',
+    'input.selectAgent': '选择一个 Agent...',
+    'input.selectSkill': '选择一个技能...',
+    'input.notConfigured': '未配置',
+    'input.projectPath': '/path/to/your/project',
+
+    // Status
+    'status.loading': '加载中...',
+    'status.saving': '保存中...',
+    'status.thinking': '思考中',
+    'status.agentWorking': 'Agent 工作中...',
+    'status.noOutput': '暂无输出',
+    'status.connected': '已连接',
+    'status.cliAuthenticated': 'CLI 已认证',
+    'status.testing': '测试中...',
+    'status.notTested': '未测试',
+    'status.notConfigured': '未配置',
+    'status.noServers': '暂无服务器',
+    'status.noConfigFiles': '暂无配置文件',
+    'status.noSubAgents': '暂无子 Agent',
+    'status.cliDetected': '检测到 Claude Code CLI',
+
+    // Chat
+    'chat.startNew': '开始新对话',
+    'chat.selectModel': '选择模型',
+    'chat.suggestions': '有什么需要帮忙的？试试这些',
+    'chat.suggestSummarize': '整理我的文件',
+    'chat.suggestBug': '分析数据',
+    'chat.suggestRefactor': '搜索网页',
+
+    // Permission
+    'permission.ask': '确认权限',
+    'permission.fullAccess': '完全访问',
+    'permission.confirmMode': '确认模式',
+
+    // Provider
+    'provider.anthropic': 'Anthropic',
+    'provider.other': '其他提供商',
+
+    // Sidebar
+    'sidebar.files': '文件',
+    'sidebar.projects': '项目',
+
+    // Error
+    'error.folderNotFound': '文件夹不存在',
+    'error.folderNotFoundDesc': '项目文件夹已被移动或删除。',
+    'error.toolExecutionFailed': '权限授予后工具执行失败',
+
+    // Action
+    'action.viewFileContent': '查看文件内容',
+
+    // Hints
+    'hint.cmdSToSave': 'Cmd+S 保存',
+
+    // Info
+    'info.addedByUser': '添加者：用户',
+
+    // Form labels
+    'form.providerName': '提供商名称',
+    'form.baseUrl': 'Base URL',
+    'form.apiKey': 'API Key',
+    'form.modelName': '模型名称',
+    'form.protocol': '协议',
+    'form.model': '模型',
+    'form.tools': '工具',
+
+    // Agent
+    'agent.selectModel': '选择此子 Agent 使用的 Claude 模型',
+    'agent.configureTools': '配置此子 Agent 可访问的工具',
+    'agent.instructions': '指令',
+    'agent.settings': '设置',
+
+    // Manage
+    'manage.configFiles': '配置文件',
+    'manage.subAgents': '子 Agent',
+    'manage.projectSkillsHint': '项目级技能在右侧栏文件树管理',
+    'manage.projectAgentsHint': '项目级 Agent 在右侧栏文件树管理',
+
+    // Onboarding
+    'onboarding.subtitle': '让我们花几步设置你的 AI Agent 工作站。',
+    'onboarding.step': '步骤',
+    'onboarding.connectAi': '连接 AI',
+    'onboarding.project': '项目',
+    'onboarding.checkingCli': '正在检测 Claude Code CLI...',
+    'onboarding.cliConnected': 'Claude Code CLI 已连接',
+    'onboarding.loggedInAs': '已登录：',
+    'onboarding.anthropicApiKey': 'Anthropic API Key',
+    'onboarding.cliActive': '已通过 CLI 连接，API Key 可选',
+    'onboarding.getApiKey': '在 console.anthropic.com 获取密钥',
+    'onboarding.otherProviders': '其他 AI 提供商（可选）',
+    'onboarding.providerInfo': 'MiniMax、GLM、Kimi、Qwen — 稍后在设置中配置',
+    'onboarding.selectFolder': '选择项目文件夹',
+    'onboarding.folderDesc': '选择一个项目文件夹来开始...',
+    'onboarding.chooseFolder': '选择项目文件夹',
+    'onboarding.clickToSelect': '点击打开文件夹选择器',
+    'onboarding.skipForNow': '跳过 — 稍后在设置中配置',
+
+    // Settings additional
+    'settings.customProviderDesc': 'OpenAI 兼容的 API 端点（如 OpenRouter 等中转服务）',
+
+    // Settings - theme/session/thinking options
+    'settings.themeDark': '深色',
+    'settings.themeLight': '浅色',
+    'settings.themeSystem': '跟随系统',
+    'settings.sessionPermanent': '永久',
+    'settings.session30d': '30 天',
+    'settings.session90d': '90 天',
+    'settings.session180d': '180 天',
+    'format.json': 'JSON',
+    'format.markdown': 'Markdown',
+    'settings.thinkingModeFullDesc': '控制思考深度（关闭 / 自动 / 最大）',
+    'settings.thinkingOff': '关闭',
+    'settings.thinkingAuto': '自动',
+    'settings.thinkingMax': '最大',
+    'status.cliActive': '（可选 — CLI 已激活）',
+    'status.removing': '移除中...',
+    'settings.remove': '移除',
+    'settings.preview': '预览',
+    'settings.previewDesc': '外观设置效果预览',
+    'settings.memoryDays3': '3 天',
+    'settings.memoryDays7': '7 天',
+    'settings.memoryDays14': '14 天',
+    'settings.memoryDays30': '30 天',
+
+    // Schedule view
+    'schedule.checkInterval': '检查间隔',
+    'schedule.notifyChannel': '通知通道',
+    'schedule.editChecklist': '编辑检查清单 →',
+    'schedule.lastRun': '上次运行:',
+    'schedule.success': '成功',
+    'schedule.failed': '失败',
+    'schedule.noCronTasks': '暂无定时任务。点击"新任务"创建。',
+    'schedule.noExecutionHistory': '暂无执行记录。',
+    'schedule.viewSession': '查看会话',
+    'schedule.newTaskTitle': '新建定时任务',
+    'schedule.editTaskTitle': '编辑定时任务',
+    'schedule.disabled': '已禁用',
+    'schedule.enabled': '已启用',
+    'schedule.editHeartbeat': '编辑 HEARTBEAT.md',
+    'schedule.creating': '创建中...',
+
+    // Form labels for schedule
+    'form.taskName': '任务名称',
+    'form.taskNamePlaceholder': '例如：每日代码审查',
+    'form.frequency': '频率',
+    'form.action': '操作',
+    'form.agent': 'Agent',
+    'form.skill': '技能',
+    'form.notifyChannel': '通知通道',
+    'form.promptRequired': '提示词（必填）',
+    'form.description': '描述',
+    'form.promptPlaceholder': '输入要发送给 Agent 的提示词...',
+    'form.descriptionPlaceholder': '可选的描述或附加指令...',
+
+    // Buttons for schedule
+    'button.createTask': '创建任务',
+
+    // Schedule frequency options
+    'schedule.frequency.minutes': '每 X 分钟',
+    'schedule.frequency.hourly': '每小时',
+    'schedule.frequency.daily': '每天',
+    'schedule.frequency.weekly': '每周',
+    'schedule.frequency.monthly': '每月',
+
+    // Schedule action types
+    'schedule.actionType.runAgent': '运行 Agent',
+    'schedule.actionType.runSkill': '运行技能',
+    'schedule.actionType.customPrompt': '自定义提示词',
+
+    // Table headers
+    'table.name': '名称',
+    'table.schedule': '计划',
+    'table.action': '操作',
+
+    // Schedule notify options
+    'schedule.notifyNone': '无',
+
+    // Schedule time labels
+    'schedule.everyNMin': '每 {n} 分钟',
+    'schedule.everyHour': '每小时',
+    'schedule.everyDay': '每天 {time}',
+    'schedule.day': '日 {dom} {time}',
+    'schedule.never': '从未',
+
+    // IM view
+    'im.overview': '概览',
+    'im.bridgeTitle': 'IM Bridge',
+    'im.bridgeDesc': '将你的 Agent 桥接到消息平台。为每个通道配置凭证和策略。',
+    'im.bridgeDefaults': '桥接默认设置',
+    'im.bridgeDefaultsDesc': '通过 Bridge 创建的新 IM 会话的默认设置。',
+    'im.defaultWorkDir': '默认工作目录',
+    'im.autoWorkspace': '自动（最近的工作区）',
+    'im.defaultModel': '默认模型',
+    'im.credentials': '凭证',
+    'im.accessControl': '访问控制',
+    'im.requireMention': '需要 @提及',
+    'im.requireMentionDesc': '仅在群组中被 @时才响应',
+    'im.senderWhitelist': '发送者白名单',
+    'im.groupWhitelist': '群聊白名单',
+    'im.commands': 'IM 命令',
+    'im.commandsDesc': '在 {platform} 聊天中发送以下命令来管理会话：',
+    'im.setupGuide': '设置指南',
+    'im.connectBotDesc': '连接 {platform} Bot 以收发消息。',
+    'im.channelNotFound': '未找到通道。',
+    // IM credential hints
+    'im.hint.tgBotToken': '从 Telegram @BotFather 获取。格式：{numeric_id}:{35_chars}',
+    'im.hint.tgChatId': '先给 Bot 发送 /start，然后点击自动检测。',
+    'im.hint.fsAppId': '从飞书开放平台获取。格式：cli_xxxxxxxxxx',
+    'im.hint.fsAppSecret': '在飞书开放平台应用设置中获取',
+    'im.hint.fsPlatform': '选择飞书（中国）或 Lark（国际版）',
+    'im.hint.dcBotToken': '从 Discord Developer Portal 获取。Bot Token 由 3 段 base64 编码组成。',
+    'im.hint.dcServerId': '右键服务器名称 → 复制服务器 ID（需开启开发者模式）',
+    'im.hint.dcChannelId': '右键频道 → 复制频道 ID。留空则监听所有频道。',
+    'im.label.channelIdOptional': '频道 ID（可选）',
+    'im.label.platform': '平台',
+    'im.placeholder.dcChannelId': '留空则监听所有频道',
+    'im.placeholder.senderWl': '逗号分隔的 {platform} 用户 ID',
+    'im.placeholder.groupWl': '逗号分隔的群聊 ID',
+    // IM setup steps
+    'im.setup.tg1': '1. 打开 Telegram，搜索 @BotFather',
+    'im.setup.tg2': '2. 发送 /newbot 并按提示创建 Bot',
+    'im.setup.tg3': '3. 复制 Bot Token 并粘贴到上方',
+    'im.setup.tg4': '4. 给新 Bot 发送 /start，然后点击自动检测',
+    'im.setup.fs1': '1. 前往飞书开放平台，创建一个新应用',
+    'im.setup.fs2': '2. 从应用设置中复制 App ID 和 App Secret',
+    'im.setup.fs3': '3. 启用 im.message.receive_v1 事件订阅',
+    'im.setup.fs4': '4. 如需免 @mention 响应：开启「接收群聊消息」权限（im:message.group_msg）',
+    'im.setup.fs5': '5. 发布应用并将 Bot 添加到群聊',
+    'im.setup.dc1': '1. 前往 Discord Developer Portal，创建新 Application',
+    'im.setup.dc2': '2. 进入 Bot 标签页，点击 Reset Token，复制 Bot Token',
+    'im.setup.dc3': '3. 启用 MESSAGE CONTENT 特权意图',
+    'im.setup.dc4': '4. 使用 OAuth2 URL Generator 邀请 Bot 到服务器',
+    // IM command descriptions
+    'im.cmd.new': '为当前聊天创建新会话',
+    'im.cmd.bind': '将聊天绑定到已有会话',
+    'im.cmd.sessions': '列出最近的会话',
+    'im.cmd.clear': '清空当前会话的所有消息',
+    'im.cmd.compact': '压缩上下文（摘要消息）',
+    'im.cmd.projects': '列出所有已注册的项目',
+    'im.cmd.switch': '按名称切换项目',
+    'im.cmd.newproject': '创建并切换到新项目',
+    'im.cmd.model': '查看或切换模型',
+    'im.cmd.mode': '查看或设置权限模式',
+    'im.cmd.status': '显示 Bridge 和会话状态',
+    'im.cmd.stop': '停止当前运行的任务',
+    'im.cmd.help': '显示所有可用命令',
+    // IM policy labels
+    'im.policy.pairing': '配对',
+    'im.policy.allowlist': '白名单',
+    'im.policy.open': '开放',
+    'im.policy.disabled': '禁用',
+    // Platform select
+    'im.platform.feishu': '飞书 (feishu.cn)',
+    'im.platform.lark': 'Lark (larksuite.com)',
+    // Onboarding (new keys only — others defined above)
+    'onboarding.cliDetected': '检测到 CLI 认证',
+    'onboarding.cliReady': '，可以直接使用！',
+    'onboarding.orEnterPath': '或手动输入路径',
+    'onboarding.nextStep': '下一步',
+    'onboarding.back': '返回',
+    'onboarding.startUsing': '开始使用 Forge',
+    'onboarding.cliPlaceholder': '使用 CLI 订阅 — 或输入 API Key...',
+    // Manage empty states
+    'manage.selectFile': '选择一个文件进行编辑',
+    'manage.selectConfig': '选择配置文件或 Agent 进行编辑',
+    'manage.selectServer': '选择一个服务器查看详情',
+    'settings.enterApiKey': '输入 API Key...',
+
+    // IM buttons & status
+    'button.autoDetect': '自动检测',
+    'button.connect': '连接',
+    'button.disconnect': '断开',
+    'status.connecting': '连接中...',
+    'status.disconnecting': '断开中...',
+    'status.detecting': '检测中...',
+    'message.connectedSuccess': '连接成功！',
+    'error.connectionError': '连接错误:',
+
+    // MCP editor
+    'mcp.formConfig': '表单配置',
+    'mcp.jsonEdit': 'JSON 编辑',
+    'form.command': '命令',
+    'form.arguments': '参数（每行一个）',
+    'form.url': 'URL',
+    'form.headers': '请求头 (JSON)',
+    'form.envVariables': '环境变量 (KEY=VALUE，每行一个)',
+    'button.editJson': '编辑 JSON',
+    'mcp.connected': '已连接！',
+    'mcp.servers': 'MCP 服务器',
+
+    // Editor mode
+    'editor.source': '源码',
+    'editor.edit': '编辑',
+    'editor.preview': '预览',
+    'editor.split': '分栏',
+
+    // Context menu
+    'contextMenu.copy': '复制',
+    'contextMenu.cut': '剪切',
+    'contextMenu.paste': '粘贴',
+    'contextMenu.newFile': '新建文件',
+    'contextMenu.newFolder': '新建文件夹',
+
+    // Skills panel
+    'skills.noMatchingSkills': '没有匹配的技能',
+    'skills.noSkillsYet': '暂无技能',
+  },
+
+  en: {
+    'app.name': 'Forge',
+
+    'sidebar.chat': 'Chat',
+    'sidebar.manage': 'Manage',
+    'sidebar.im': 'IM Channels',
+    'sidebar.schedule': 'Schedule',
+    'sidebar.marketplace': 'Marketplace',
+    'sidebar.settings': 'Settings',
+    'sidebar.newSession': 'New Session',
+    'sidebar.sessions': 'Sessions',
+    'sidebar.workspace': 'Workspace',
+    'sidebar.noSessions': 'No sessions yet',
+    'sidebar.mainAgent': 'Main Agent',
+    'sidebar.openProject': 'Open Project Folder',
+    'sidebar.recentProjects': 'Recent Projects',
+
+    'chat.newSession': 'New Session',
+    'chat.startConversation': 'Start a new conversation',
+    'chat.sendMessage': 'Send a message to start chatting',
+    'chat.placeholder': 'Type a message...',
+    'chat.shiftEnter': 'Shift+Enter for new line',
+    'chat.export': 'Export session',
+    'chat.permissionRequired': 'Permission Required',
+    'chat.permissionDenied': 'Permission Denied',
+    'chat.permissionGranted': 'Permission Granted',
+    'chat.permissionTimeout': 'Permission Timed Out',
+    'chat.allow': 'Allow',
+    'chat.allowSession': 'Allow Session',
+    'chat.deny': 'Deny',
+
+    'settings.title': 'Settings',
+    'settings.modelApi': 'Model & API',
+    'settings.modelApiDesc': 'Configure API providers and model settings.',
+    'settings.permission': 'Permissions',
+    'settings.permissionDesc': 'Control how Forge handles dangerous operations.',
+    'settings.project': 'Project',
+    'settings.projectDesc': 'Workspace and memory settings.',
+    'settings.workspace': 'Workspace',
+    'settings.scheduledTasks': 'Scheduled Tasks',
+    'settings.appearance': 'Appearance',
+    'settings.appearanceDesc': 'Theme, language, and font settings.',
+    'settings.data': 'Data',
+    'settings.dataDesc': 'Storage, export, and data management.',
+    'settings.advanced': 'Advanced',
+    'settings.export': 'Export',
+    'settings.exportDesc': 'Export as JSON or Markdown',
+    'settings.clearAll': 'Clear All Data',
+    'settings.clearAllDesc': 'Delete all sessions, settings and files (requires confirmation)',
+    'settings.clearConfirm': 'Click again to confirm — this cannot be undone!',
+    'settings.confirmClear': 'Confirm Clear',
+    'settings.clearing': 'Clearing...',
+    'settings.theme': 'Theme',
+    'settings.themeDesc': 'Dark / Light / System',
+    'settings.language': 'Language',
+    'settings.languageDesc': '中文 / English',
+    'settings.fontSize': 'Font Size',
+    'settings.fontSizeDesc': 'Chat area font size',
+    'settings.codeTheme': 'Code Theme',
+    'settings.codeThemeDesc': 'Syntax highlighting color scheme',
+    'settings.defaultModel': 'Default Model',
+    'settings.defaultModelDesc': 'Used for new sessions',
+    'settings.desktopPermission': 'Desktop Permission Mode',
+    'settings.desktopPermissionDesc': 'Confirm mode requires approval for dangerous operations',
+    'settings.imPermission': 'IM Permission Mode',
+    'settings.imPermissionDesc': 'Permission mode for IM channel interactions',
+    'settings.approvalTimeout': 'Approval Timeout',
+    'settings.memoryRetention': 'Daily Memory Retention',
+    'settings.memoryRetentionDesc': 'Archive older daily memory files',
+    'settings.thinkingMode': 'Thinking Mode',
+    'settings.thinkingModeDesc': 'Extended thinking for complex tasks',
+    'settings.effortLevel': 'Effort Level',
+    'settings.effortLevelDesc': 'Balance between speed and quality',
+    'settings.baseUrl': 'Base URL',
+    'settings.baseUrlDesc': 'Override for private deployments',
+    'settings.dataDir': 'Data Directory',
+    'settings.openFolder': 'Open',
+    'settings.sessionRetention': 'Session Retention',
+    'settings.sessionRetentionDesc': 'Auto-clean sessions older than X days',
+    'settings.exportSessions': 'Export Sessions',
+    'settings.exportSessionsDesc': 'Export as JSON or Markdown',
+    'settings.providers': 'Providers',
+    'settings.addCustomProvider': 'Add Custom Provider',
+    'settings.testConnection': 'Test Connection',
+
+    'contextMenu.archive': 'Archive',
+
+    'rightSidebar.workspace': 'Workspace',
+    'rightSidebar.agentStatus': 'Agent Status',
+    'rightSidebar.toolLog': 'Tool Log',
+    'rightSidebar.noFiles': 'No files',
+    'rightSidebar.expand': 'Expand right sidebar',
+    'rightSidebar.collapse': 'Collapse right sidebar',
+
+    'manage.skills': 'Skills',
+    'manage.agents': 'Agents',
+    'manage.mcp': 'MCP',
+
+    'marketplace.title': 'Marketplace',
+    'marketplace.newTemplate': 'New Template',
+    'marketplace.noTemplates': 'No templates yet',
+    'marketplace.noTemplatesDesc': 'Click + to create your first template',
+    'marketplace.useTemplate': 'Use This Template',
+    'marketplace.selectTemplate': 'Select a template to view',
+    'marketplace.selectFile': 'Select a file to edit',
+    'marketplace.searchTemplates': 'Search templates...',
+    'marketplace.templateNamePlaceholder': 'Template name...',
+    'marketplace.selectProjectFolder': 'Select project folder',
+    'marketplace.creatingProject': 'Creating project...',
+    'marketplace.projectCreated': 'Project created',
+    'marketplace.noFiles': 'No files in template yet',
+
+    'schedule.title': 'Scheduled Tasks',
+    'schedule.newTask': 'New Task',
+    'schedule.heartbeat': 'Heartbeat',
+    'schedule.cronTasks': 'Cron Tasks',
+    'schedule.executionHistory': 'Execution History',
+    'schedule.checkNow': 'Check Now',
+    'schedule.engineRunning': 'Engine Running',
+    'schedule.engineStopped': 'Engine Stopped',
+
+    'onboarding.welcome': 'Welcome to Forge',
+    'onboarding.welcomeDesc': 'Your local AI agent workstation. Let\'s set things up in a few quick steps.',
+    'onboarding.getStarted': 'Get Started',
+    'onboarding.whatName': 'What should I call you?',
+    'onboarding.nameDesc': 'This helps personalize your experience.',
+    'onboarding.whatDo': 'What do you do?',
+    'onboarding.roleDesc': 'This helps Forge tailor its responses.',
+    'onboarding.howRespond': 'How should I respond?',
+    'onboarding.styleDesc': 'Choose your preferred communication style.',
+    'onboarding.connectApi': 'Connect your API',
+    'onboarding.apiDesc': 'Enter your Anthropic API key to start chatting.',
+    'onboarding.skip': 'Skip',
+    'onboarding.next': 'Next',
+    'onboarding.finish': 'Finish',
+    'onboarding.settingUp': 'Setting up...',
+    'onboarding.apiNote': 'You can also configure this later in Settings. Your key is stored locally.',
+
+    'im.title': 'IM Channels',
+    'im.connected': 'Connected',
+    'im.disconnected': 'Disconnected',
+    'im.notConfigured': 'Not Configured',
+    'im.error': 'Error',
+    'im.connect': 'Connect',
+    'im.disconnect': 'Disconnect',
+    'im.dmPolicy': 'DM Policy',
+    'im.groupPolicy': 'Group Policy',
+    'im.triggerMode': 'Trigger Mode',
+
+    'model.switch': 'Switch Model',
+
+    'toolLog.title': 'Tool Activity',
+    'toolLog.running': 'Running',
+    'toolLog.success': 'Success',
+    'toolLog.error': 'Error',
+
+    'search.sessions': 'Search sessions...',
+    'search.skills': 'Search skills...',
+    'search.projects': 'Filter projects...',
+
+    'contextMenu.rename': 'Rename',
+    'contextMenu.delete': 'Delete',
+
+    'emptyState.startChatting': 'Send a message to start chatting',
+    'emptyState.reviewProject': 'Help me review this project',
+    'emptyState.writeFunction': 'Write a function to...',
+    'emptyState.explainCode': 'Explain how this code works',
+    'emptyState.findBugs': 'Find bugs in my code',
+
+    'project.folderMissing': 'Folder not found',
+    'project.folderDeletedConfirm': 'Folder has been deleted. Remove from list?',
+
+    'common.save': 'Save',
+    'common.cancel': 'Cancel',
+    'common.create': 'Create',
+    'common.delete': 'Delete',
+    'common.enabled': 'Enabled',
+    'common.disabled': 'Disabled',
+    'common.loading': 'Loading...',
+    'common.confirm': 'Confirm',
+    'common.comingSoon': 'Coming Soon',
+    'common.rename': 'Rename',
+
+    // Buttons
+    'button.copyCode': 'Copy code',
+    'button.copy': 'Copy',
+    'button.copied': 'Copied',
+    'button.closeEditor': 'Close editor',
+    'button.projects': 'Projects',
+    'button.expandSidebar': 'Expand sidebar',
+    'button.collapseSidebar': 'Collapse sidebar',
+    'button.newFile': 'New File',
+    'button.newFolder': 'New Folder',
+    'button.exportSession': 'Export session',
+    'button.attachFile': 'Attach file',
+    'button.search': 'Search',
+    'button.newConfigFile': 'New Config File',
+    'button.newAgentFile': 'New Agent File',
+    'button.addServer': 'Add Server',
+    'button.addCustomProvider': 'Add Custom Provider',
+    'button.addProvider': 'Add Provider',
+    'button.adding': 'Adding...',
+    'button.changeFolder': 'Change folder',
+    'button.save': 'Save',
+
+    // Input placeholders
+    'input.reply': 'Reply...',
+    'input.search': 'Search...',
+    'input.searchFiles': 'Search files...',
+    'input.searchSkills': 'Search skills...',
+    'input.fileName': 'File name...',
+    'input.folderName': 'Folder name...',
+    'input.addDescription': 'Add a description...',
+    'input.selectAgent': 'Select an agent...',
+    'input.selectSkill': 'Select a skill...',
+    'input.notConfigured': 'Not configured',
+    'input.projectPath': '/path/to/your/project',
+
+    // Status
+    'status.loading': 'Loading...',
+    'status.saving': 'Saving...',
+    'status.thinking': 'Thinking',
+    'status.agentWorking': 'Agent is working...',
+    'status.noOutput': 'No output yet',
+    'status.connected': 'Connected',
+    'status.cliAuthenticated': 'CLI Authenticated',
+    'status.testing': 'Testing...',
+    'status.notTested': 'Not tested',
+    'status.notConfigured': 'Not configured',
+    'status.noServers': 'No servers yet',
+    'status.noConfigFiles': 'No config files',
+    'status.noSubAgents': 'No sub-agents',
+    'status.cliDetected': 'Claude Code CLI detected',
+
+    // Chat
+    'chat.startNew': 'Start a new conversation',
+    'chat.selectModel': 'Select a model',
+    'chat.suggestions': 'Ask me anything, or try one of these',
+    'chat.suggestSummarize': 'Organize my files',
+    'chat.suggestBug': 'Analyze data',
+    'chat.suggestRefactor': 'Search the web',
+
+    // Permission
+    'permission.ask': 'Ask permissions',
+    'permission.fullAccess': 'Full access',
+    'permission.confirmMode': 'Confirm Mode',
+
+    // Provider
+    'provider.anthropic': 'Anthropic',
+    'provider.other': 'Other Providers',
+
+    // Sidebar
+    'sidebar.files': 'Files',
+    'sidebar.projects': 'Projects',
+
+    // Error
+    'error.folderNotFound': 'Folder not found',
+    'error.folderNotFoundDesc': 'The project folder has been moved or deleted.',
+    'error.toolExecutionFailed': 'Tool execution failed after permission was granted',
+
+    // Action
+    'action.viewFileContent': 'View file content',
+
+    // Hints
+    'hint.cmdSToSave': 'Cmd+S to save',
+
+    // Info
+    'info.addedByUser': 'Added by: User',
+
+    // Form labels
+    'form.providerName': 'Provider Name',
+    'form.baseUrl': 'Base URL',
+    'form.apiKey': 'API Key',
+    'form.modelName': 'Model Name',
+    'form.protocol': 'Protocol',
+    'form.model': 'Model',
+    'form.tools': 'Tools',
+
+    // Agent
+    'agent.selectModel': 'Select which Claude model this sub-agent uses',
+    'agent.configureTools': 'Configure which tools this sub-agent can access',
+    'agent.instructions': 'Instructions',
+    'agent.settings': 'Settings',
+
+    // Manage
+    'manage.configFiles': 'Config Files',
+    'manage.subAgents': 'Sub-Agents',
+    'manage.projectSkillsHint': 'Project-level skills are managed in the right sidebar file tree',
+    'manage.projectAgentsHint': 'Project-level agents are managed in the right sidebar file tree',
+
+    // Onboarding
+    'onboarding.subtitle': "Let's set up your AI agent workspace in a few quick steps.",
+    'onboarding.step': 'Step',
+    'onboarding.connectAi': 'Connect AI',
+    'onboarding.project': 'Project',
+    'onboarding.checkingCli': 'Checking for Claude Code CLI...',
+    'onboarding.cliConnected': 'Claude Code CLI Connected',
+    'onboarding.loggedInAs': 'Logged in as: ',
+    'onboarding.anthropicApiKey': 'Anthropic API Key',
+    'onboarding.cliActive': 'Already connected via CLI. API key is optional.',
+    'onboarding.getApiKey': 'Get your key at console.anthropic.com',
+    'onboarding.otherProviders': 'Other AI Providers (optional)',
+    'onboarding.providerInfo': 'MiniMax, GLM, Kimi, Qwen — configure later in Settings',
+    'onboarding.selectFolder': 'Select Your Project Folder',
+    'onboarding.folderDesc': 'Choose a project folder to get started...',
+    'onboarding.chooseFolder': 'Choose a Project Folder',
+    'onboarding.clickToSelect': 'Click to open folder selector',
+    'onboarding.skipForNow': "Skip for now — I'll configure in Settings later",
+
+    // Settings additional
+    'settings.customProviderDesc': 'OpenAI-compatible API endpoint (e.g. OpenRouter)',
+
+    // Settings - theme/session/thinking options
+    'settings.themeDark': 'Dark',
+    'settings.themeLight': 'Light',
+    'settings.themeSystem': 'Follow System',
+    'settings.sessionPermanent': 'Permanent',
+    'settings.session30d': '30 days',
+    'settings.session90d': '90 days',
+    'settings.session180d': '180 days',
+    'format.json': 'JSON',
+    'format.markdown': 'Markdown',
+    'settings.thinkingModeFullDesc': 'Controls thinking depth (Off / Auto / Max)',
+    'settings.thinkingOff': 'Off',
+    'settings.thinkingAuto': 'Auto',
+    'settings.thinkingMax': 'Max',
+    'status.cliActive': '(optional — CLI active)',
+    'status.removing': 'Removing...',
+    'settings.remove': 'Remove',
+    'settings.preview': 'Preview',
+    'settings.previewDesc': 'Appearance settings preview',
+    'settings.memoryDays3': '3 days',
+    'settings.memoryDays7': '7 days',
+    'settings.memoryDays14': '14 days',
+    'settings.memoryDays30': '30 days',
+
+    // Schedule view
+    'schedule.checkInterval': 'Check Interval',
+    'schedule.notifyChannel': 'Notify Channel',
+    'schedule.editChecklist': 'Edit Checklist →',
+    'schedule.lastRun': 'Last run:',
+    'schedule.success': 'Success',
+    'schedule.failed': 'Failed',
+    'schedule.noCronTasks': 'No cron tasks yet. Click "New Task" to create one.',
+    'schedule.noExecutionHistory': 'No execution history yet.',
+    'schedule.viewSession': 'View Session',
+    'schedule.newTaskTitle': 'New Scheduled Task',
+    'schedule.editTaskTitle': 'Edit Scheduled Task',
+    'schedule.disabled': 'Disabled',
+    'schedule.enabled': 'Enabled',
+    'schedule.editHeartbeat': 'Edit HEARTBEAT.md',
+    'schedule.creating': 'Creating...',
+
+    // Form labels for schedule
+    'form.taskName': 'Task Name',
+    'form.taskNamePlaceholder': 'e.g. Daily code review',
+    'form.frequency': 'Frequency',
+    'form.action': 'Action',
+    'form.agent': 'Agent',
+    'form.skill': 'Skill',
+    'form.notifyChannel': 'Notification Channel',
+    'form.promptRequired': 'Prompt (required)',
+    'form.description': 'Description',
+    'form.promptPlaceholder': 'Enter the prompt to send to the agent...',
+    'form.descriptionPlaceholder': 'Optional description or additional instructions...',
+
+    // Buttons for schedule
+    'button.createTask': 'Create Task',
+
+    // Schedule frequency options
+    'schedule.frequency.minutes': 'Every X minutes',
+    'schedule.frequency.hourly': 'Every hour',
+    'schedule.frequency.daily': 'Every day',
+    'schedule.frequency.weekly': 'Every week',
+    'schedule.frequency.monthly': 'Every month',
+
+    // Schedule action types
+    'schedule.actionType.runAgent': 'Run Agent',
+    'schedule.actionType.runSkill': 'Run Skill',
+    'schedule.actionType.customPrompt': 'Custom Prompt',
+
+    // Table headers
+    'table.name': 'Name',
+    'table.schedule': 'Schedule',
+    'table.action': 'Action',
+
+    // Schedule notify options
+    'schedule.notifyNone': 'None',
+
+    // Schedule time labels
+    'schedule.everyNMin': 'Every {n} min',
+    'schedule.everyHour': 'Every hour',
+    'schedule.everyDay': 'Every day {time}',
+    'schedule.day': 'Day {dom} {time}',
+    'schedule.never': 'Never',
+
+    // IM view
+    'im.overview': 'Overview',
+    'im.bridgeTitle': 'IM Bridge',
+    'im.bridgeDesc': 'Bridge your Agent to messaging platforms. Configure credentials and policies for each channel.',
+    'im.bridgeDefaults': 'Bridge Defaults',
+    'im.bridgeDefaultsDesc': 'Default settings for new IM sessions created via Bridge.',
+    'im.defaultWorkDir': 'Default Working Directory',
+    'im.autoWorkspace': 'Auto (most recent workspace)',
+    'im.defaultModel': 'Default Model',
+    'im.credentials': 'Credentials',
+    'im.accessControl': 'Access Control',
+    'im.requireMention': 'Require @mention',
+    'im.requireMentionDesc': 'Only respond in groups when the bot is @mentioned',
+    'im.senderWhitelist': 'Sender Whitelist',
+    'im.groupWhitelist': 'Group Chat Whitelist',
+    'im.commands': 'IM Commands',
+    'im.commandsDesc': 'Send these commands in {platform} chat to manage sessions:',
+    'im.setupGuide': 'Setup Guide',
+    'im.connectBotDesc': 'Connect a {platform} Bot to send and receive messages.',
+    'im.channelNotFound': 'Channel not found.',
+    // IM credential hints
+    'im.hint.tgBotToken': 'Get from @BotFather on Telegram. Format: {numeric_id}:{35_chars}',
+    'im.hint.tgChatId': 'Send /start to your bot first, then click Auto Detect.',
+    'im.hint.fsAppId': 'From Feishu Open Platform. Format: cli_xxxxxxxxxx',
+    'im.hint.fsAppSecret': 'From Feishu Open Platform app settings',
+    'im.hint.fsPlatform': 'Choose Feishu (China) or Lark (International)',
+    'im.hint.dcBotToken': 'From Discord Developer Portal. Bot token is 3 base64-encoded parts.',
+    'im.hint.dcServerId': 'Right-click server name → Copy Server ID (Developer Mode required)',
+    'im.hint.dcChannelId': 'Right-click channel → Copy Channel ID. Leave blank for all channels.',
+    'im.label.channelIdOptional': 'Channel ID (optional)',
+    'im.label.platform': 'Platform',
+    'im.placeholder.dcChannelId': 'Leave empty to listen on all channels',
+    'im.placeholder.senderWl': 'Comma-separated {platform} user IDs',
+    'im.placeholder.groupWl': 'Comma-separated group chat IDs',
+    // IM setup steps
+    'im.setup.tg1': '1. Open Telegram, search @BotFather',
+    'im.setup.tg2': '2. Send /newbot and follow prompts to create a bot',
+    'im.setup.tg3': '3. Copy the Bot Token and paste it above',
+    'im.setup.tg4': '4. Send /start to your new bot, then click Auto Detect',
+    'im.setup.fs1': '1. Go to Feishu Open Platform, create a new app',
+    'im.setup.fs2': '2. Copy App ID and App Secret from app settings',
+    'im.setup.fs3': '3. Enable im.message.receive_v1 event subscription',
+    'im.setup.fs4': '4. To respond without @mention: enable "Read group messages" permission (im:message.group_msg)',
+    'im.setup.fs5': '5. Publish the app and add the bot to a group chat',
+    'im.setup.dc1': '1. Go to Discord Developer Portal, create a new Application',
+    'im.setup.dc2': '2. Go to Bot tab, click Reset Token, copy the Bot Token',
+    'im.setup.dc3': '3. Enable MESSAGE CONTENT privileged intent',
+    'im.setup.dc4': '4. Use OAuth2 URL Generator to invite bot to your server',
+    // IM command descriptions
+    'im.cmd.new': 'Create a new session for this chat',
+    'im.cmd.bind': 'Bind chat to an existing session',
+    'im.cmd.sessions': 'List recent sessions for binding',
+    'im.cmd.clear': 'Clear all messages in the current session',
+    'im.cmd.compact': 'Compress context (summarize messages)',
+    'im.cmd.projects': 'List all registered projects',
+    'im.cmd.switch': 'Switch to a project by name',
+    'im.cmd.newproject': 'Create and switch to a new project',
+    'im.cmd.model': 'View or switch model',
+    'im.cmd.mode': 'Show or set permission mode',
+    'im.cmd.status': 'Show bridge and session status',
+    'im.cmd.stop': 'Stop the current running task',
+    'im.cmd.help': 'Show all available commands',
+    // IM policy labels
+    'im.policy.pairing': 'Pairing',
+    'im.policy.allowlist': 'Allowlist',
+    'im.policy.open': 'Open',
+    'im.policy.disabled': 'Disabled',
+    // Platform select
+    'im.platform.feishu': 'Feishu (feishu.cn)',
+    'im.platform.lark': 'Lark (larksuite.com)',
+    // Onboarding (new keys only — others defined above)
+    'onboarding.cliDetected': 'CLI authentication detected',
+    'onboarding.cliReady': '. You\'re ready to go!',
+    'onboarding.orEnterPath': 'or enter path manually',
+    'onboarding.nextStep': 'Next Step',
+    'onboarding.back': 'Back',
+    'onboarding.startUsing': 'Start Using Forge',
+    'onboarding.cliPlaceholder': 'Using CLI subscription — or enter API key...',
+    // Manage empty states
+    'manage.selectFile': 'Select a file to edit',
+    'manage.selectConfig': 'Select a config file or agent to edit',
+    'manage.selectServer': 'Select a server to view details',
+    'settings.enterApiKey': 'Enter API key...',
+
+    // IM buttons & status
+    'button.autoDetect': 'Auto Detect',
+    'button.connect': 'Connect',
+    'button.disconnect': 'Disconnect',
+    'status.connecting': 'Connecting...',
+    'status.disconnecting': 'Disconnecting...',
+    'status.detecting': 'Detecting...',
+    'message.connectedSuccess': 'Connected successfully!',
+    'error.connectionError': 'Connection error:',
+
+    // MCP editor
+    'mcp.formConfig': 'Form Config',
+    'mcp.jsonEdit': 'JSON Edit',
+    'form.command': 'Command',
+    'form.arguments': 'Arguments (one per line)',
+    'form.url': 'URL',
+    'form.headers': 'Headers (JSON)',
+    'form.envVariables': 'Environment Variables (KEY=VALUE, one per line)',
+    'button.editJson': 'Edit JSON',
+    'mcp.connected': 'Connected!',
+    'mcp.servers': 'MCP Servers',
+
+    // Editor mode
+    'editor.source': 'Source',
+    'editor.edit': 'Edit',
+    'editor.preview': 'Preview',
+    'editor.split': 'Split',
+
+    // Context menu
+    'contextMenu.copy': 'Copy',
+    'contextMenu.cut': 'Cut',
+    'contextMenu.paste': 'Paste',
+    'contextMenu.newFile': 'New File',
+    'contextMenu.newFolder': 'New Folder',
+
+    // Skills panel
+    'skills.noMatchingSkills': 'No matching skills',
+    'skills.noSkillsYet': 'No skills yet',
+  },
+}
+
+let currentLocale: Locale = 'en'
+
+export function setLocale(locale: Locale): void {
+  currentLocale = locale
+}
+
+export function getLocale(): Locale {
+  return currentLocale
+}
+
+export function t(key: string): string {
+  return translations[currentLocale][key] || translations.en[key] || key
+}
+
+export function getTranslations(locale: Locale): Record<string, string> {
+  return translations[locale]
+}

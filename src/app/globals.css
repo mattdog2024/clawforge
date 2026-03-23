@@ -1,0 +1,166 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Font settings — overridden by app-layout via useSettings */
+  --forge-font-size: 14px;
+
+  /* Dark theme (default) — from Pencil design tokens */
+  --bg-page: #0B0B0E;
+  --bg-surface: #16161A;
+  --bg-elevated: #1A1A1E;
+  --bg-hover: #222226;
+  --bg-active: #2A2A2E;
+
+  --text-primary: #FAFAF9;
+  --text-secondary: #8E8E93;
+  --text-tertiary: #6B6B70;
+  --text-muted: #4A4A50;
+
+  --border-subtle: #2A2A2E;
+  --border-strong: #3A3A40;
+
+  --accent-indigo: #6366F1;
+  --accent-green: #32D583;
+  --accent-amber: #FFB547;
+  --accent-coral: #E85A4F;
+}
+
+[data-theme="light"] {
+  --bg-page: #FFFFFF;
+  --bg-surface: #F5F5F4;
+  --bg-elevated: #FAFAF9;
+  --bg-hover: #F0F0EE;
+  --bg-active: #E8E8E6;
+
+  --text-primary: #1A1A1E;
+  --text-secondary: #6B6B70;
+  --text-tertiary: #8E8E93;
+  --text-muted: #B0B0B4;
+
+  --border-subtle: #E8E8E6;
+  --border-strong: #D0D0CE;
+
+  --accent-indigo: #6366F1;
+  --accent-green: #22C55E;
+  --accent-amber: #F59E0B;
+  --accent-coral: #EF4444;
+}
+
+/* Animation utility classes */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes expandWidth {
+  from { width: 0; opacity: 0; }
+}
+
+@keyframes collapseHeight {
+  from { max-height: var(--expand-from, 300px); }
+  to { max-height: 0; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 200ms ease-out;
+}
+
+.animate-scale-in {
+  animation: scaleIn 200ms ease-out;
+}
+
+.animate-slide-down {
+  animation: slideDown 150ms ease-out;
+}
+
+.animate-expand-width {
+  animation: expandWidth 250ms ease-out;
+}
+
+/* Sidebar panel width transition — disabled during drag resize for instant feedback */
+.sidebar-transition {
+  transition: width 200ms ease-in-out;
+}
+.resizing .sidebar-transition,
+.sidebar-transition.resizing {
+  transition: none !important;
+}
+
+/* Chevron rotation transition */
+.chevron-transition {
+  transition: transform 150ms ease-in-out;
+}
+
+/* Collapsible section height transition */
+.collapsible-section {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 200ms ease-in-out;
+}
+
+.collapsible-section.open {
+  grid-template-rows: 1fr;
+}
+
+.collapsible-section > div {
+  overflow: hidden;
+}
+
+/* File tree drag-and-drop highlight (applied via direct DOM, not React state) */
+.drop-target {
+  box-shadow: inset 0 0 0 1px var(--accent-indigo);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+@layer base {
+  body {
+    @apply bg-page text-primary font-body;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Electron title bar drag region */
+  .titlebar-drag {
+    -webkit-app-region: drag;
+  }
+
+  .titlebar-no-drag {
+    -webkit-app-region: no-drag;
+  }
+
+  /* Scrollbar styling for dark theme */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+  }
+
+  /* Input focus transition */
+  input, textarea, select {
+    transition: border-color 150ms ease;
+  }
+}

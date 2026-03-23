@@ -1,0 +1,22 @@
+node_modules/
+.next/
+out/
+dist-electron/
+dist/
+build/
+release/
+*.tsbuildinfo
+next-env.d.ts
+.env.local
+.env
+.DS_Store
+.forge-data/
+.forge/
+forge.db
+forge.db-shm
+forge.db-wal
+
+# Internal dev files
+.claude/
+DEV-PLAN.md
+Product-Spec*.md

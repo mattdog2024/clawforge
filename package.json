@@ -1,0 +1,65 @@
+{
+  "name": "forge",
+  "version": "0.1.0",
+  "description": "Local AI agent desktop app — chat, IM bridge, scheduled tasks. Powered by Claude Agent SDK.",
+  "author": "FEICAI <https://github.com/feicaiclub>",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/feicaiclub/forge"
+  },
+  "private": true,
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev:next": "next dev --turbopack -p 3000",
+    "dev:electron:compile": "tsup electron/main.ts electron/preload.ts --outDir dist-electron --format cjs --external electron --no-splitting",
+    "dev:electron": "pnpm dev:electron:compile && wait-on http://localhost:3000 && electron .",
+    "dev": "concurrently -k -n NEXT,ELECTRON -c blue,green \"pnpm dev:next\" \"pnpm dev:electron\"",
+    "build:next": "next build",
+    "build:electron": "node scripts/build-electron.mjs",
+    "build": "pnpm build:next && pnpm build:electron",
+    "package": "pnpm build && electron-builder",
+    "package:mac": "pnpm build && electron-builder --mac",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.81",
+    "@larksuiteoapi/node-sdk": "^1.59.0",
+    "better-sqlite3": "^11.0.0",
+    "clsx": "^2.1.0",
+    "lucide-react": "^0.500.0",
+    "next": "^15.3.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "shiki": "^4.0.2",
+    "tailwind-merge": "^3.0.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@types/better-sqlite3": "^7.0.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.0",
+    "concurrently": "^9.0.0",
+    "electron": "40.8.0",
+    "electron-builder": "^26.0.0",
+    "esbuild": "^0.25.0",
+    "postcss": "^8.4.0",
+    "tailwindcss": "^3.4.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.8.0",
+    "wait-on": "^8.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild",
+      "better-sqlite3"
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
+  output: 'standalone',
+  compress: false, // Disable gzip — local Electron app doesn't need compression, and it buffers SSE streams
+  images: {
+    unoptimized: true,
+  },
+  serverExternalPackages: ['better-sqlite3'],
+}
+
+export default nextConfig
