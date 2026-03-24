@@ -362,12 +362,12 @@ export function ChatView({
       // Session loaded — always snap to bottom instantly, reset scroll state
       userScrolledUpRef.current = false
       messagesEndRef.current?.scrollIntoView({ behavior: 'instant' as ScrollBehavior })
-    } else if (isNewMessage && !userScrolledUpRef.current) {
-      // New message added and user is at bottom — smooth scroll
+    } else if ((isNewMessage || streaming) && !userScrolledUpRef.current) {
+      // New message added or streaming content updating — smooth scroll to bottom
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
     // If user scrolled up or message count decreased (clear), do nothing
-  }, [messages])
+  }, [messages, streaming])
 
   // Track whether user has scrolled up away from the bottom
   useEffect(() => {
