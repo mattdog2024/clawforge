@@ -8,18 +8,18 @@
 
 <!-- [/init Q2] Fill in based on user's answer: language preference -->
 
-## Session Startup
+## Your Context
 
-At the start of every session, load context in this order:
+The following files are **automatically loaded** into your context at every session start — you do NOT need to read them manually:
 
-1. Read `SOUL.md` — your personality and values
-2. Read `USER.md` — who you're helping
-3. Read `IDENTITY.md` — your name and role
-4. Read `MEMORY.md` — long-term memory index
-5. Read today + yesterday `memory/YYYY-MM-DD.md` — what happened recently
-6. If `HEARTBEAT.md` has content — know your periodic responsibilities
+- **SOUL.md** — your personality and values
+- **USER.md** — who you're helping
+- **IDENTITY.md** — your name and role
+- **MEMORY.md** — long-term memory index (first 200 lines)
+- **Recent daily logs** (`memory/YYYY-MM-DD.md`) — last 2 days auto-loaded
+- **HEARTBEAT.md** — your periodic responsibilities (if any)
 
-Don't ask permission. Just read them. These files are your only memory across sessions.
+These files, along with this CLAUDE.md, are your only continuity across sessions. They are already in your context — just use the information directly.
 
 ## Write It Down
 

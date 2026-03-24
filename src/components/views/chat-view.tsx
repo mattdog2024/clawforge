@@ -889,7 +889,15 @@ export function ChatView({
 
 function UserMessage({ blocks, fallbackContent }: { blocks: ContentBlock[]; fallbackContent: string }) {
   const textBlock = blocks.find(b => b.type === 'text')
-  const text = textBlock?.type === 'text' ? textBlock.text : fallbackContent
+  let text = textBlock?.type === 'text' ? textBlock.text : fallbackContent
+  // Strip <template> blocks from display (sent to Agent but not shown to user)
+  if (text && text.includes('<template')) {
+    text = text.replace(/<template[\s\S]*?<\/template>/g, '').trim()
+  }
+  // Simplify /init display: just show "/init"
+  if (text && /^\/init\s*[—–-]/.test(text)) {
+    text = '/init'
+  }
   const imageAttachments = blocks.filter(b => b.type === 'image_attachment') as Array<{ type: 'image_attachment'; url: string; name: string }>
   const fileAttachments = blocks.filter(b => b.type === 'file_attachment') as Array<{ type: 'file_attachment'; url: string; name: string; size: number; mimeType: string }>
   const hasAttachments = imageAttachments.length > 0 || fileAttachments.length > 0
