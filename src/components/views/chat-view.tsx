@@ -246,17 +246,10 @@ export function ChatView({
             break
           case 'init':
             if (workspaceId) {
-              try {
-                const res = await fetch(`/api/workspaces/${workspaceId}/init`, { method: 'POST' })
-                const data = await res.json()
-                if (data.ok) {
-                  setSystemMsg(data.message)
-                  // Open CLAUDE.md in the file editor
-                  window.dispatchEvent(new CustomEvent('forge:slash-command', { detail: { command: 'init' } }))
-                } else {
-                  setSystemMsg(data.message || 'Failed to initialize workspace.')
-                }
-              } catch { setSystemMsg('Failed to initialize workspace.') }
+              // Ensure .claude/ directory exists before Agent starts interview
+              try { await fetch(`/api/workspaces/${workspaceId}/init`, { method: 'POST' }) } catch { /* ignore */ }
+              // Send /init as a message to trigger the Agent's interview flow
+              onSendMessage('/init')
             } else {
               setSystemMsg('No workspace selected.')
             }
