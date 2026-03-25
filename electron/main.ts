@@ -93,15 +93,19 @@ async function startServer(): Promise<number> {
   })
 
   serverProcess.stdout?.on('data', (data: Buffer) => {
-    console.log(`[server] ${data.toString().trim()}`)
+    try { console.log(`[server] ${data.toString().trim()}`) } catch { /* EPIPE safe */ }
   })
 
   serverProcess.stderr?.on('data', (data: Buffer) => {
-    console.error(`[server] ${data.toString().trim()}`)
+    try { console.error(`[server] ${data.toString().trim()}`) } catch { /* EPIPE safe */ }
   })
 
+  // Prevent EPIPE crashes when child process exits while pipes are still open
+  serverProcess.stdout?.on('error', () => {})
+  serverProcess.stderr?.on('error', () => {})
+
   serverProcess.on('exit', (code) => {
-    console.log(`Server process exited with code ${code}`)
+    try { console.log(`Server process exited with code ${code}`) } catch { /* safe */ }
     serverProcess = null
   })
 
