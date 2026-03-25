@@ -47,7 +47,7 @@ const PROVIDER_CATALOG: Record<string, {
     authType: 'auth_token',
   },
   moonshot: {
-    anthropicBaseUrl: 'https://api.moonshot.ai/anthropic',
+    anthropicBaseUrl: 'https://api.moonshot.cn/anthropic',
     authType: 'auth_token',
   },
   qwen: {
