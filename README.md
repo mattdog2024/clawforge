@@ -53,7 +53,17 @@ pnpm package:mac
 
 The `.dmg` file will be in the `release/` directory.
 
+> **Note**: The pre-built DMG is for Apple Silicon (arm64) only. Intel Mac users need to build from source.
+
 > **Note**: The app is ad-hoc signed (not notarized). On first launch, right-click the app → "Open" → confirm to bypass Gatekeeper.
+
+### Data Storage
+
+All application data is stored locally at `~/.forge/`:
+- `forge.db` — SQLite database (sessions, messages, settings). Auto-created on first launch.
+- `workspaces/` — Workspace config file copies (`.claude/` snapshots)
+
+No data is sent to any server other than the AI provider APIs you configure.
 
 ## Project Structure
 

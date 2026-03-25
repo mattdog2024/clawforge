@@ -1,5 +1,5 @@
 import { build } from 'esbuild'
-import { readdirSync, lstatSync, readlinkSync, rmSync, cpSync } from 'node:fs'
+import { readdirSync, lstatSync, readlinkSync, rmSync, cpSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 // Step 1: Build electron main + preload with esbuild
@@ -84,6 +84,36 @@ function copyTemplates(standaloneDir) {
   }
 }
 
+// Step 4: Strip developer machine paths from standalone build output
+// Next.js embeds the build machine's absolute path in compiled files (outputFileTracingRoot, turbopack.root).
+// Replace with a generic path to prevent privacy leaks in distributed builds.
+function stripDevPaths(standaloneDir) {
+  const projectRoot = process.cwd()
+  let replaced = 0
+
+  function walk(dir) {
+    let entries
+    try { entries = readdirSync(dir, { withFileTypes: true }) } catch { return }
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name)
+      try {
+        if (entry.isDirectory()) {
+          walk(fullPath)
+        } else if (entry.name.endsWith('.js') || entry.name.endsWith('.json')) {
+          const content = readFileSync(fullPath, 'utf-8')
+          if (content.includes(projectRoot)) {
+            writeFileSync(fullPath, content.replaceAll(projectRoot, '/app'), 'utf-8')
+            replaced++
+          }
+        }
+      } catch { /* skip unreadable files */ }
+    }
+  }
+
+  walk(standaloneDir)
+  console.log(`✅ Stripped developer paths from ${replaced} file(s)`)
+}
+
 // Main
 await buildElectron()
 
@@ -92,6 +122,7 @@ try {
   lstatSync(standaloneDir)
   resolveSymlinks(standaloneDir)
   copyTemplates(standaloneDir)
+  stripDevPaths(standaloneDir)
 } catch {
   console.log('⚠️  No .next/standalone found — skipping symlink resolution (dev build?)')
 }

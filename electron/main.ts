@@ -8,6 +8,33 @@ import { existsSync, watch, type FSWatcher } from 'node:fs'
 const isDev = !app.isPackaged
 
 let mainWindow: BrowserWindow | null = null
+
+/**
+ * Find the system Node.js binary.
+ * GUI apps on macOS don't inherit shell PATH (nvm/fnm/homebrew paths missing).
+ * Search common installation locations in priority order.
+ */
+function findNodeBinary(): string {
+  const home = os.homedir()
+  const candidates = [
+    // Standard system paths
+    '/usr/local/bin/node',
+    '/opt/homebrew/bin/node',
+    // fnm
+    path.join(home, '.fnm', 'aliases', 'default', 'bin', 'node'),
+    // nvm
+    path.join(home, '.nvm', 'current', 'bin', 'node'),
+    // Volta
+    path.join(home, '.volta', 'bin', 'node'),
+    // Homebrew on Intel Mac
+    '/usr/local/opt/node/bin/node',
+  ]
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate
+  }
+  // Fallback: hope it's in PATH (works when launched from terminal)
+  return 'node'
+}
 let serverProcess: ChildProcess | null = null
 let currentWatcher: FSWatcher | null = null
 
@@ -59,7 +86,9 @@ async function startServer(): Promise<number> {
 
   // Use system Node.js to run the standalone server
   // This avoids needing to rebuild native modules (better-sqlite3) for Electron's ABI
-  serverProcess = spawn('node', [serverScript], {
+  const nodeBin = findNodeBinary()
+  console.log(`[server] Using Node.js: ${nodeBin}`)
+  serverProcess = spawn(nodeBin, [serverScript], {
     env: {
       ...process.env,
       PORT: String(port),
