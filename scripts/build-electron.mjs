@@ -85,6 +85,44 @@ function copyTemplates(standaloneDir) {
   }
 }
 
+// Step 3b: Fix pnpm hoisting gaps in standalone node_modules.
+// pnpm doesn't hoist all dependencies, so some modules that Next.js's
+// require-hook expects at node_modules/<name> are only in .pnpm/ deep paths.
+// Create symlinks for any missing top-level references.
+function fixPnpmHoisting(standaloneDir) {
+  const nodeModules = join(standaloneDir, 'node_modules')
+  const pnpmDir = join(nodeModules, '.pnpm')
+  if (!existsSync(pnpmDir)) return
+
+  // Modules that Next.js require-hook.js expects at top level
+  const required = ['styled-jsx']
+  let fixed = 0
+
+  for (const mod of required) {
+    const target = join(nodeModules, mod)
+    if (existsSync(target)) continue  // Already hoisted
+
+    // Find it in .pnpm/
+    const pattern = `${mod}@`
+    let found = null
+    try {
+      for (const entry of readdirSync(pnpmDir)) {
+        if (entry.startsWith(pattern)) {
+          const candidate = join(pnpmDir, entry, 'node_modules', mod)
+          if (existsSync(candidate)) { found = candidate; break }
+        }
+      }
+    } catch { continue }
+
+    if (found) {
+      cpSync(found, target, { recursive: true })
+      fixed++
+    }
+  }
+
+  if (fixed > 0) console.log(`✅ Fixed ${fixed} pnpm hoisting gap(s)`)
+}
+
 // Step 4: Strip developer machine paths from standalone build output.
 // Next.js embeds the build machine's absolute path in compiled output
 // (server.js, required-server-files.json, route bundles in .next/server/).
@@ -238,6 +276,7 @@ const standaloneDir = join(process.cwd(), '.next', 'standalone')
 try {
   lstatSync(standaloneDir)
   resolveSymlinks(standaloneDir)
+  fixPnpmHoisting(standaloneDir)
   cleanForgeData(standaloneDir)
   copyTemplates(standaloneDir)
   stripDevPaths(standaloneDir)
