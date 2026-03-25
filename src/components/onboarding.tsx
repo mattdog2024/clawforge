@@ -104,7 +104,15 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         await fetch('/api/api-providers/anthropic', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ api_key: apiKey.trim() }),
+          body: JSON.stringify({ api_key: apiKey.trim(), status: 'connected' }),
+        })
+      } else if (cliDetected) {
+        // CLI authenticated but no API key entered — sync status to DB
+        // so Settings page shows correct state without needing manual Test Connection
+        await fetch('/api/api-providers/anthropic', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'cli_authenticated' }),
         })
       }
 
