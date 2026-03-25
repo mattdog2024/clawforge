@@ -196,15 +196,31 @@ async function testViaCliAuth(): Promise<boolean> {
   const { execFile } = await import('child_process')
   const { promisify } = await import('util')
   const execFileAsync = promisify(execFile)
+  const fs = await import('fs')
+  const path = await import('path')
+  const os = await import('os')
 
   try {
-    // Try to find claude CLI
+    // Try to find claude CLI — first via which, then check common paths
+    let claudePath: string | null = null
     const which = await execFileAsync('which', ['claude']).catch(() => null)
-    if (!which?.stdout?.trim()) return false
+    if (which?.stdout?.trim()) {
+      claudePath = which.stdout.trim()
+    } else {
+      // Fallback: check common installation paths (GUI apps may not have shell PATH)
+      const candidates = [
+        path.join(os.homedir(), '.local', 'bin', 'claude'),
+        '/usr/local/bin/claude',
+        '/opt/homebrew/bin/claude',
+      ]
+      for (const c of candidates) {
+        if (fs.existsSync(c)) { claudePath = c; break }
+      }
+    }
 
-    const claudePath = which.stdout.trim()
+    if (!claudePath) return false
+
     // Run `claude --version` to verify CLI is installed and authenticated
-    // Then check credentials file exists (already verified by isClaudeCliAuthenticated)
     await execFileAsync(claudePath, ['--version'], { timeout: 10000 })
     return true
   } catch {

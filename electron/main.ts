@@ -78,9 +78,24 @@ async function startServer(): Promise<number> {
   // This avoids needing to rebuild native modules (better-sqlite3) for Electron's ABI
   const nodeBin = findNodeBinary()
   console.log(`[server] Using Node.js: ${nodeBin}`)
+
+  // GUI apps on macOS don't inherit shell PATH. Extend PATH with common
+  // tool installation locations so the SDK can find `claude` CLI and other binaries.
+  const home = os.homedir()
+  const extraPaths = [
+    path.join(home, '.local', 'bin'),        // Claude Code CLI default location
+    path.join(home, '.fnm', 'aliases', 'default', 'bin'),
+    path.join(home, '.nvm', 'versions', 'node', 'current', 'bin'),
+    path.join(home, '.volta', 'bin'),
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+  ].filter(p => existsSync(p))
+  const extendedPath = [...extraPaths, process.env.PATH || ''].join(':')
+
   serverProcess = spawn(nodeBin, [serverScript], {
     env: {
       ...process.env,
+      PATH: extendedPath,
       PORT: String(port),
       HOSTNAME: '127.0.0.1',
       NODE_ENV: 'production',
