@@ -17,15 +17,9 @@ const WORKSPACE_FILES: Record<string, string> = {
   'MEMORY.md': '# Long-term Memory\n\nPersistent facts and learnings across sessions.\n',
   'HEARTBEAT.md': `# Heartbeat Checklist
 
-This checklist is executed periodically by the Heartbeat agent.
-Each item will be checked and the results summarized.
-
-## Checks
-
-- [ ] Check GitHub issues and PRs for new activity
-- [ ] Verify CI/CD pipeline status
-- [ ] Review recent error logs
-- [ ] Check disk space and system health
+<!-- Add tasks below for the Agent to check periodically. -->
+<!-- Leave empty to skip heartbeat actions. -->
+<!-- Use /init to set this up, or add items manually. -->
 `,
 }
 
