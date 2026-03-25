@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { Key, Shield, FolderOpen, Palette, Database, Plus, Trash2, ChevronRight, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useModels } from '@/hooks/use-models'
 import { CustomSelect } from '@/components/ui/custom-select'
 import { useTheme } from '@/components/providers/theme-provider'
 import { useI18n } from '@/components/providers/i18n-provider'
@@ -27,11 +28,7 @@ const PROVIDER_COLORS: Record<string, string> = {
   qwen: '#FF6A00',
 }
 
-const MODELS = [
-  { value: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
-  { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-  { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' },
-]
+// MODELS loaded dynamically via useModels() hook inside the component.
 
 type NavSection = 'model' | 'permissions' | 'project' | 'appearance' | 'data'
 
@@ -57,6 +54,8 @@ export function SettingsView() {
   const { theme, setTheme } = useTheme()
   const { locale, setLocale, t } = useI18n()
   const { get, updateSettings } = useSettings()
+  const { models } = useModels()
+  const MODELS = models.map(m => ({ value: m.id, label: m.label }))
   const { providers, updateProvider, testConnection, createProvider, deleteProvider } = useApiProviders()
   const [activeSection, setActiveSection] = useState<NavSection>('model')
   const [clearConfirm, setClearConfirm] = useState(false)
@@ -738,6 +737,8 @@ function ProviderConfig({ provider, onUpdate, onTestConnection, onDelete, settin
   settingsChange?: (key: string, value: string) => void
 }) {
   const { t } = useI18n()
+  const { models } = useModels()
+  const MODELS = models.map(m => ({ value: m.id, label: m.label }))
   const [apiKey, setApiKey] = useState(provider.apiKey)
   const [dirty, setDirty] = useState(false)
   const [cliDetected, setCliDetected] = useState(false)

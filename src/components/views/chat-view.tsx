@@ -10,6 +10,8 @@ import { MarkdownRenderer } from '@/components/markdown-renderer'
 import { AgentBlock, ParallelAgentIndicator, isAgentToolCall } from '@/components/chat/agent-block'
 import { SlashCommandMenu } from '@/components/chat/slash-command-menu'
 import { useSlashCommands } from '@/hooks/use-slash-commands'
+import { useModels } from '@/hooks/use-models'
+import { BUILTIN_MODELS } from '@/lib/models'
 import { filterCommands, type SlashCommand } from '@/lib/slash-commands'
 
 interface ChatViewProps {
@@ -33,29 +35,8 @@ interface ChatViewProps {
   onClearSession?: () => Promise<void>
 }
 
-const MODEL_OPTIONS = [
-  // Anthropic (native)
-  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', provider: 'Anthropic' },
-  { id: 'claude-opus-4-6', label: 'Claude Opus 4.6', provider: 'Anthropic' },
-  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', provider: 'Anthropic' },
-  // Moonshot/Kimi (Anthropic-compatible)
-  { id: 'kimi-k2.5', label: 'Kimi K2.5', provider: 'Moonshot' },
-  { id: 'kimi-k2-thinking', label: 'Kimi K2 Thinking', provider: 'Moonshot' },
-  // Zhipu/GLM (Anthropic-compatible)
-  { id: 'glm-5', label: 'GLM-5', provider: 'Zhipu' },
-  { id: 'glm-5-turbo', label: 'GLM-5 Turbo', provider: 'Zhipu' },
-  { id: 'glm-4-plus', label: 'GLM-4 Plus', provider: 'Zhipu' },
-  // MiniMax (Anthropic-compatible)
-  { id: 'MiniMax-M2.7', label: 'MiniMax M2.7', provider: 'MiniMax' },
-  { id: 'MiniMax-M2.7-highspeed', label: 'MiniMax M2.7 Highspeed', provider: 'MiniMax' },
-  { id: 'MiniMax-M2.5', label: 'MiniMax M2.5', provider: 'MiniMax' },
-  // Qwen/DashScope (Anthropic-compatible)
-  { id: 'qwen3.5-plus', label: 'Qwen 3.5 Plus', provider: 'Qwen' },
-  { id: 'qwen3.5-flash', label: 'Qwen 3.5 Flash', provider: 'Qwen' },
-  { id: 'qwen3-coder-plus', label: 'Qwen3 Coder Plus', provider: 'Qwen' },
-  { id: 'qwen-max', label: 'Qwen Max', provider: 'Qwen' },
-  { id: 'qwen-plus', label: 'Qwen Plus', provider: 'Qwen' },
-]
+// MODEL_OPTIONS loaded dynamically via useModels() hook inside the component.
+// No hardcoded array here — all models (built-in + custom) come from /api/models.
 
 export function ChatView({
   session,
@@ -78,6 +59,7 @@ export function ChatView({
   onClearSession,
 }: ChatViewProps) {
   const { t } = useI18n()
+  const { models: MODEL_OPTIONS } = useModels()
   const [input, setInput] = useState('')
   const [modelOpen, setModelOpen] = useState(false)
   const [permOpen, setPermOpen] = useState(false)
@@ -1870,7 +1852,7 @@ function getExportToolSummary(name: string, input: Record<string, unknown>): str
 }
 
 function formatModel(model: string): string {
-  const found = MODEL_OPTIONS.find((o) => o.id === model)
+  const found = BUILTIN_MODELS.find((o) => o.id === model)
   if (found) return found.label
   // Fallback: prettify the model ID
   if (model.includes('opus')) return 'Claude Opus 4.6'

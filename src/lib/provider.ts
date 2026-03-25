@@ -56,33 +56,8 @@ const PROVIDER_CATALOG: Record<string, {
   },
 }
 
-/**
- * Model ID → Provider ID mapping.
- * Used to determine which provider to use for a given model.
- */
-const MODEL_TO_PROVIDER: Record<string, string> = {
-  // Anthropic
-  'claude-opus-4-6': 'anthropic',
-  'claude-sonnet-4-6': 'anthropic',
-  'claude-haiku-4-5': 'anthropic',
-  // Moonshot/Kimi
-  'kimi-k2.5': 'moonshot',
-  'kimi-k2-thinking': 'moonshot',
-  // Zhipu/GLM
-  'glm-5': 'zhipu',
-  'glm-5-turbo': 'zhipu',
-  'glm-4-plus': 'zhipu',
-  // MiniMax
-  'MiniMax-M2.7': 'minimax',
-  'MiniMax-M2.7-highspeed': 'minimax',
-  'MiniMax-M2.5': 'minimax',
-  // Qwen/DashScope
-  'qwen3.5-plus': 'qwen',
-  'qwen3.5-flash': 'qwen',
-  'qwen3-coder-plus': 'qwen',
-  'qwen-max': 'qwen',
-  'qwen-plus': 'qwen',
-}
+// Import model-to-provider mapping from single source of truth
+import { MODEL_TO_PROVIDER } from './models'
 
 /**
  * Check if Claude Code CLI is authenticated by looking for ~/.claude.json oauthAccount.
@@ -133,58 +108,72 @@ export function getClaudeCliAccountInfo(): { email: string; displayName: string;
 export function resolveProvider(model?: string): ResolvedProvider {
   const db = getDb()
 
-  // Determine provider from model
-  const providerId = (model && MODEL_TO_PROVIDER[model]) || 'anthropic'
-  const catalog = PROVIDER_CATALOG[providerId]
+  // 1. Try built-in provider lookup
+  const builtinProviderId = model ? MODEL_TO_PROVIDER[model] : undefined
 
-  if (!catalog) {
-    throw new Error(`Unknown provider for model: ${model}`)
+  if (builtinProviderId) {
+    const catalog = PROVIDER_CATALOG[builtinProviderId]
+    if (!catalog) throw new Error(`Unknown provider for model: ${model}`)
+
+    const row = db.prepare('SELECT id, api_key, base_url, provider FROM api_providers WHERE id = ?').get(builtinProviderId) as {
+      id: string; api_key: string; base_url: string; provider: string
+    } | undefined
+
+    // For Anthropic: support custom endpoint override
+    let baseUrl: string | undefined
+    if (builtinProviderId === 'anthropic') {
+      const customEndpoint = db.prepare("SELECT value FROM settings WHERE key = 'custom_api_endpoint'").get() as { value: string } | undefined
+      baseUrl = customEndpoint?.value || row?.base_url || undefined
+    } else {
+      baseUrl = catalog.anthropicBaseUrl
+    }
+
+    if (row?.api_key) {
+      return { apiKey: row.api_key, baseUrl, provider: row.provider || builtinProviderId, providerId: row.id || builtinProviderId, isCliAuth: false, authType: catalog.authType }
+    }
+
+    // Anthropic CLI auth fallback
+    if (builtinProviderId === 'anthropic' && isClaudeCliAuthenticated()) {
+      return { apiKey: '', baseUrl, provider: 'anthropic', providerId: row?.id || builtinProviderId, isCliAuth: true, authType: 'api_key' }
+    }
+
+    if (builtinProviderId !== 'anthropic') {
+      throw new Error(`No API key configured for ${builtinProviderId}. Please add your API key in Settings.`)
+    }
+
+    throw new Error('No Anthropic credentials found. Either add an API key in Settings, or run `claude login` in your terminal to authenticate with your Claude subscription.')
   }
 
-  const row = db.prepare('SELECT id, api_key, base_url, provider FROM api_providers WHERE id = ?').get(providerId) as {
-    id: string
-    api_key: string
-    base_url: string
-    provider: string
+  // 2. Try custom provider lookup: match model_name in api_providers where provider='custom'
+  if (model) {
+    const customRow = db.prepare(
+      "SELECT id, name, api_key, base_url FROM api_providers WHERE provider = 'custom' AND model_name = ? AND api_key != ''"
+    ).get(model) as { id: string; name: string; api_key: string; base_url: string } | undefined
+
+    if (customRow) {
+      return {
+        apiKey: customRow.api_key,
+        baseUrl: customRow.base_url || undefined,
+        provider: 'custom',
+        providerId: customRow.id,
+        isCliAuth: false,
+        authType: 'auth_token',  // Custom providers use Bearer token (OpenAI-compatible)
+      }
+    }
+  }
+
+  // 3. Default to Anthropic
+  const catalog = PROVIDER_CATALOG.anthropic
+  const row = db.prepare("SELECT id, api_key, base_url, provider FROM api_providers WHERE id = 'anthropic'").get() as {
+    id: string; api_key: string; base_url: string; provider: string
   } | undefined
 
-  // For Anthropic: support custom endpoint override from settings
-  let baseUrl: string | undefined
-  if (providerId === 'anthropic') {
-    const customEndpoint = db.prepare("SELECT value FROM settings WHERE key = 'custom_api_endpoint'").get() as { value: string } | undefined
-    baseUrl = customEndpoint?.value || row?.base_url || undefined
-  } else {
-    // Non-Anthropic: always use the Anthropic-compatible endpoint
-    baseUrl = catalog.anthropicBaseUrl
-  }
-
-  // If API key exists, use it directly
   if (row?.api_key) {
-    return {
-      apiKey: row.api_key,
-      baseUrl,
-      provider: row?.provider || providerId,
-      providerId: row?.id || providerId,
-      isCliAuth: false,
-      authType: catalog.authType,
-    }
+    return { apiKey: row.api_key, baseUrl: row.base_url || undefined, provider: 'anthropic', providerId: 'anthropic', isCliAuth: false, authType: catalog.authType }
   }
 
-  // No API key — for Anthropic, check CLI auth
-  if (providerId === 'anthropic' && isClaudeCliAuthenticated()) {
-    return {
-      apiKey: '',
-      baseUrl,
-      provider: row?.provider || 'anthropic',
-      providerId: row?.id || providerId,
-      isCliAuth: true,
-      authType: 'api_key',
-    }
-  }
-
-  // Non-Anthropic provider without API key
-  if (providerId !== 'anthropic') {
-    throw new Error(`No API key configured for ${PROVIDER_CATALOG[providerId] ? providerId : model}. Please add your API key in Settings.`)
+  if (isClaudeCliAuthenticated()) {
+    return { apiKey: '', baseUrl: undefined, provider: 'anthropic', providerId: 'anthropic', isCliAuth: true, authType: 'api_key' }
   }
 
   throw new Error('No Anthropic credentials found. Either add an API key in Settings, or run `claude login` in your terminal to authenticate with your Claude subscription.')

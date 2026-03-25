@@ -33,30 +33,37 @@ const KNOWN_COMMANDS = [
   'mode', 'status', 'stop', 'help',
 ]
 
-interface ModelEntry {
+import { BUILTIN_MODELS } from '@/lib/models'
+
+interface ImModelEntry {
   id: string
   label: string
   aliases: string[]
 }
 
-const AVAILABLE_MODELS: ModelEntry[] = [
-  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', aliases: ['sonnet', 'claude-sonnet'] },
-  { id: 'claude-opus-4-6', label: 'Claude Opus 4.6', aliases: ['opus', 'claude-opus'] },
-  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', aliases: ['haiku', 'claude-haiku'] },
-  { id: 'kimi-k2.5', label: 'Kimi K2.5', aliases: ['kimi'] },
-  { id: 'kimi-k2-thinking', label: 'Kimi K2 Thinking', aliases: ['kimi-thinking'] },
-  { id: 'glm-5', label: 'GLM-5', aliases: ['glm', 'glm5'] },
-  { id: 'glm-5-turbo', label: 'GLM-5 Turbo', aliases: ['glm5-turbo'] },
-  { id: 'glm-4-plus', label: 'GLM-4 Plus', aliases: ['glm4'] },
-  { id: 'MiniMax-M2.7', label: 'MiniMax M2.7', aliases: ['minimax', 'm2.7'] },
-  { id: 'MiniMax-M2.7-highspeed', label: 'MiniMax M2.7 Highspeed', aliases: ['minimax-fast'] },
-  { id: 'MiniMax-M2.5', label: 'MiniMax M2.5', aliases: ['m2.5'] },
-  { id: 'qwen3.5-plus', label: 'Qwen 3.5 Plus', aliases: ['qwen', 'qwen3.5'] },
-  { id: 'qwen3.5-flash', label: 'Qwen 3.5 Flash', aliases: ['qwen-flash'] },
-  { id: 'qwen3-coder-plus', label: 'Qwen3 Coder Plus', aliases: ['qwen-coder'] },
-  { id: 'qwen-max', label: 'Qwen Max', aliases: ['qwen-max'] },
-  { id: 'qwen-plus', label: 'Qwen Plus', aliases: ['qwen-plus'] },
-]
+/**
+ * Get all available models: built-in + custom providers from DB.
+ * Called at runtime so custom providers are always up to date.
+ */
+function getAvailableModels(): ImModelEntry[] {
+  const models: ImModelEntry[] = BUILTIN_MODELS.map(m => ({
+    id: m.id,
+    label: m.label,
+    aliases: m.aliases || [],
+  }))
+
+  // Add custom provider models from DB
+  try {
+    const customs = getDb().prepare(
+      "SELECT model_name, name FROM api_providers WHERE provider = 'custom' AND model_name != '' AND status = 'connected'"
+    ).all() as { model_name: string; name: string }[]
+    for (const row of customs) {
+      models.push({ id: row.model_name, label: `${row.model_name} (${row.name})`, aliases: [] })
+    }
+  } catch { /* DB not ready */ }
+
+  return models
+}
 
 // ---------------------------------------------------------------------------
 // i18n support
@@ -748,31 +755,31 @@ function handleNewProject(cmd: ImCommand, msg: IncomingMessage, router: ChannelR
 }
 
 function findModelLabel(modelId: string): string {
-  const entry = AVAILABLE_MODELS.find(m => m.id === modelId)
+  const entry = getAvailableModels().find(m => m.id === modelId)
   return entry ? entry.label : modelId
 }
 
-function matchModel(input: string): ModelEntry | undefined {
+function matchModel(input: string): ImModelEntry | undefined {
   const normalized = input.toLowerCase().replace(/[\s.]+/g, '-')
 
   // 1. Exact id match
-  const exact = AVAILABLE_MODELS.find(m => m.id.toLowerCase() === normalized)
+  const exact = getAvailableModels().find(m => m.id.toLowerCase() === normalized)
   if (exact) return exact
 
   // 2. Alias match
-  const byAlias = AVAILABLE_MODELS.find(m =>
+  const byAlias = getAvailableModels().find(m =>
     m.aliases.some(a => a.toLowerCase() === normalized),
   )
   if (byAlias) return byAlias
 
   // 3. Id includes match
-  const byIdIncludes = AVAILABLE_MODELS.find(m =>
+  const byIdIncludes = getAvailableModels().find(m =>
     m.id.toLowerCase().includes(normalized),
   )
   if (byIdIncludes) return byIdIncludes
 
   // 4. Label includes match (case-insensitive)
-  const byLabelIncludes = AVAILABLE_MODELS.find(m =>
+  const byLabelIncludes = getAvailableModels().find(m =>
     m.label.toLowerCase().includes(normalized),
   )
   if (byLabelIncludes) return byLabelIncludes
@@ -798,7 +805,7 @@ function handleModel(cmd: ImCommand, msg: IncomingMessage, router: ChannelRouter
       '',
       `${t('modelAvailable')}:`,
     ]
-    for (const m of AVAILABLE_MODELS) {
+    for (const m of getAvailableModels()) {
       const shortcut = m.aliases[0] || m.id
       lines.push(`  /model ${shortcut} → ${m.label}`)
     }
@@ -819,7 +826,7 @@ function handleModel(cmd: ImCommand, msg: IncomingMessage, router: ChannelRouter
       '',
       `${t('modelAvailable')}:`,
     ]
-    for (const m of AVAILABLE_MODELS) {
+    for (const m of getAvailableModels()) {
       const shortcut = m.aliases[0] || m.id
       lines.push(`  /model ${shortcut} → ${m.label}`)
     }

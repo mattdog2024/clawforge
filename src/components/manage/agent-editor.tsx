@@ -8,6 +8,7 @@ import { useWordWrap } from '@/hooks/use-word-wrap'
 import { MarkdownPreview } from '@/components/ui/markdown-preview'
 import { CustomSelect } from '@/components/ui/custom-select'
 import { useI18n } from '@/components/providers/i18n-provider'
+import { useModels } from '@/hooks/use-models'
 import type { AgentSelection, SubAgentInfo } from '@/hooks/use-agent-config'
 
 const TOOL_LIST = [
@@ -27,16 +28,7 @@ const TOOL_PRESETS = [
   { id: 'full', label: 'Full', disallow: [] as string[] },
 ]
 
-const MODEL_OPTIONS = [
-  { value: 'inherit', label: 'Inherit (default)' },
-  { value: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
-  { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-  { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' },
-  { value: 'kimi-k2.5', label: 'Kimi K2.5' },
-  { value: 'glm-5', label: 'GLM-5' },
-  { value: 'MiniMax-M2.7', label: 'MiniMax M2.7' },
-  { value: 'qwen3.5-plus', label: 'Qwen 3.5 Plus' },
-]
+// MODEL_OPTIONS loaded dynamically via useModels() hook inside the component.
 
 interface AgentEditorProps {
   selection: AgentSelection
@@ -230,6 +222,8 @@ function SubAgentEditor({
   updateSubAgentField: (filename: string, field: string, value: string | string[]) => Promise<void>
 }) {
   const { t } = useI18n()
+  const { models } = useModels()
+  const MODEL_OPTIONS = [{ value: 'inherit', label: 'Inherit (default)' }, ...models.map(m => ({ value: m.id, label: m.label }))]
   const [activeTab, setActiveTab] = useState<'instructions' | 'settings'>('instructions')
   const [mode, setMode] = useState<'edit' | 'preview' | 'split'>('edit')
   const [content, setContent] = useState('')
