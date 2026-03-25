@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { ArrowUp, Square, Plus, ChevronDown, ChevronRight, XCircle, Loader2, ShieldAlert, Download, X, FileIcon, ImageIcon, Check, Shield, ShieldOff, Globe, Terminal, FileText, Search, Bot, FileDiff, Sparkles } from 'lucide-react'
+import { ArrowUp, Square, Plus, ChevronDown, ChevronRight, XCircle, Loader2, ShieldAlert, Download, X, FileIcon, ImageIcon, Check, Shield, ShieldOff, Globe, Terminal, FileText, Search, FileDiff, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { useContainerWidth } from '@/hooks/use-container-width'
@@ -483,9 +483,7 @@ export function ChatView({
   if (!session) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
-        <h1 className="text-[32px] font-bold tracking-tight text-indigo" style={{ fontFamily: "'SF Pro Display', 'Inter', system-ui, sans-serif", letterSpacing: '-0.02em' }}>
-          {t('app.name')}
-        </h1>
+        <img src="/mascot.jpg" alt="Forge" className="w-20 h-20 object-contain" />
         <p className="text-[14px] text-secondary">{t('chat.startNew')}</p>
         <button
           onClick={onNewSession}
@@ -527,9 +525,7 @@ export function ChatView({
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-6 py-4">
         {messages.length === 0 && !streaming && (
           <div className="flex flex-col items-center justify-center h-full gap-5">
-            <h1 className="text-[32px] font-bold tracking-tight text-indigo" style={{ fontFamily: "'SF Pro Display', 'Inter', system-ui, sans-serif", letterSpacing: '-0.02em' }}>
-              {t('app.name')}
-            </h1>
+            <img src="/mascot.jpg" alt="Forge" className="w-20 h-20 object-contain" />
             <div className="text-center space-y-1.5">
               <p className="text-[14px] text-muted">{t('chat.suggestions')}</p>
             </div>
@@ -981,11 +977,8 @@ function AssistantMessage({ blocks, streaming, isThinking, thinkingMode, onPermi
   )
 
   return (
-    <div className="flex gap-3">
-      <div className="w-7 h-7 rounded-full bg-indigo flex items-center justify-center shrink-0 mt-0.5">
-        <Bot size={16} className="text-white" />
-      </div>
-      <div className="flex-1 min-w-0 space-y-3">
+    <div>
+      <div className="space-y-3">
         {!hasContent && streaming && <WaitingIndicator label={showThinkingLabel ? 'Thinking...' : undefined} />}
         {/* Collapsible thinking panel */}
         {thinkingBlocks.length > 0 && (

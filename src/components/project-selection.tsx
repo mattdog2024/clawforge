@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback } from 'react'
-import { FolderOpen, Anvil, Clock, Folder, Trash2 } from 'lucide-react'
+import { FolderOpen, Folder, Trash2 } from 'lucide-react'
 import { useI18n } from '@/components/providers/i18n-provider'
 import type { Workspace } from '@/lib/types'
 
@@ -53,7 +53,7 @@ export function ProjectSelection({
           <div className="w-[560px] bg-surface border border-subtle rounded-2xl p-10 flex flex-col gap-8">
             {/* Header */}
             <div className="flex flex-col items-center gap-2">
-              <Anvil className="w-10 h-10 text-indigo" />
+              <img src="/mascot.jpg" alt="Forge" className="w-14 h-14 object-contain" />
               <h1 className="text-[28px] font-bold text-primary font-heading tracking-tight">
                 Open a Project
               </h1>
@@ -113,7 +113,7 @@ export function ProjectSelection({
           <div className="w-[480px] bg-surface border border-subtle rounded-2xl p-12 flex flex-col items-center gap-8">
             {/* Header */}
             <div className="flex flex-col items-center gap-2">
-              <Anvil className="w-12 h-12 text-indigo" />
+              <img src="/mascot.jpg" alt="Forge" className="w-16 h-16 object-contain" />
               <h1 className="text-[28px] font-bold text-primary font-heading tracking-tight">
                 Welcome to Forge
               </h1>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import { ArrowRight, ChevronDown, ChevronUp, Anvil, FolderOpen, Folder, CircleCheck, Terminal, LogIn, Loader2, Info } from 'lucide-react'
+import { ArrowRight, ChevronDown, ChevronUp, FolderOpen, Folder, CircleCheck, Terminal, LogIn, Loader2, Info } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useI18n } from '@/components/providers/i18n-provider'
 
@@ -148,7 +148,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
 
         {/* ── headerArea ── */}
         <div className="flex flex-col items-center gap-2">
-          <Anvil size={40} className="text-indigo" />
+          <img src="/mascot.jpg" alt="Forge" className="w-12 h-12 object-contain" />
           <h1 className="text-[28px] font-bold text-primary tracking-tight" style={{ fontFamily: 'Fraunces, serif' }}>
             {t('onboarding.welcome')}
           </h1>
