@@ -148,7 +148,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
 
         {/* ── headerArea ── */}
         <div className="flex flex-col items-center gap-2">
-          <img src="/mascot.jpg" alt="Forge" className="w-12 h-12 object-contain" />
+          <img src="/mascot.png" alt="Forge" className="w-12 h-12 object-contain" />
           <h1 className="text-[28px] font-bold text-primary tracking-tight" style={{ fontFamily: 'Fraunces, serif' }}>
             {t('onboarding.welcome')}
           </h1>

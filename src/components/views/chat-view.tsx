@@ -483,7 +483,7 @@ export function ChatView({
   if (!session) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
-        <img src="/mascot.jpg" alt="Forge" className="w-20 h-20 object-contain" />
+        <img src="/mascot.png" alt="Forge" className="w-20 h-20 object-contain" />
         <p className="text-[14px] text-secondary">{t('chat.startNew')}</p>
         <button
           onClick={onNewSession}
@@ -525,7 +525,7 @@ export function ChatView({
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-6 py-4">
         {messages.length === 0 && !streaming && (
           <div className="flex flex-col items-center justify-center h-full gap-5">
-            <img src="/mascot.jpg" alt="Forge" className="w-20 h-20 object-contain" />
+            <img src="/mascot.png" alt="Forge" className="w-20 h-20 object-contain" />
             <div className="text-center space-y-1.5">
               <p className="text-[14px] text-muted">{t('chat.suggestions')}</p>
             </div>
