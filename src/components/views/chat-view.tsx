@@ -438,6 +438,8 @@ export function ChatView({
         }])
       } catch { /* ignore */ }
     }
+    // Reset file input so the same file can be selected again
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }, [])
 
   const removeAttachment = useCallback((idx: number) => {
