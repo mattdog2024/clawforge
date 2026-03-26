@@ -8,6 +8,7 @@ export interface Session {
   title: string
   workspace: string
   model: string
+  permissionMode: string
   status: SessionStatus
   createdAt: string
   updatedAt: string

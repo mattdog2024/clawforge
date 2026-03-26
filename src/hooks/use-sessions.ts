@@ -8,6 +8,7 @@ interface DbSession {
   title: string
   workspace: string
   model: string
+  permission_mode: string
   status: string
   created_at: string
   updated_at: string
@@ -19,6 +20,7 @@ function mapSession(row: DbSession): Session {
     title: row.title,
     workspace: row.workspace,
     model: row.model,
+    permissionMode: row.permission_mode || '',
     status: (row.status as Session['status']) || 'active',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
