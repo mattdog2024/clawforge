@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
+import { getCronEngine } from '@/lib/cron/engine'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -42,6 +43,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   db.prepare(`UPDATE cron_tasks SET ${sets.join(', ')} WHERE id = ?`).run(...values)
   const updated = db.prepare('SELECT * FROM cron_tasks WHERE id = ?').get(id)
+
+  // Auto-start cron engine when a task is enabled
+  if (body.enabled === true || body.enabled === 1) {
+    const engine = getCronEngine()
+    if (!engine.isRunning()) engine.start()
+  }
+
   return NextResponse.json(updated)
 }
 

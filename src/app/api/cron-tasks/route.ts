@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
+import { getCronEngine } from '@/lib/cron/engine'
 import crypto from 'crypto'
 
 export async function GET(req: NextRequest) {
@@ -41,5 +42,11 @@ export async function POST(req: NextRequest) {
   )
 
   const created = db.prepare('SELECT * FROM cron_tasks WHERE id = ?').get(id)
+
+  // Auto-start cron engine when a task is created (it may not have started
+  // at boot if there were no enabled tasks at that time)
+  const engine = getCronEngine()
+  if (!engine.isRunning()) engine.start()
+
   return NextResponse.json(created, { status: 201 })
 }
