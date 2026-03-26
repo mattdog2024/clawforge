@@ -32,10 +32,8 @@ export class FeishuAdapter extends ChannelAdapter {
   private messageQueue: IncomingMessage[] = []
   private messageWaiter: ((msg: IncomingMessage | null) => void) | null = null
 
-  // Watchdog: detect silent WSClient disconnection (P7 fix)
+  // Track last event time for connection health logging
   private lastEventTime = 0
-  private static readonly WATCHDOG_TIMEOUT_MS = 10_000  // 10s — detect silent disconnect ASAP
-  private static readonly STALE_THRESHOLD_MS = 15_000   // 15s without any event → assume dead
 
   // Permission response callback
   private permissionCallback: ((requestId: string, decision: 'allow' | 'deny') => void) | null = null
@@ -148,24 +146,15 @@ export class FeishuAdapter extends ChannelAdapter {
       const cleanup = () => {
         if (resolved) return
         resolved = true
-        clearTimeout(watchdog)
         this.messageWaiter = null
       }
 
-      // Watchdog: prevent hanging forever if WSClient silently disconnects (P7 fix)
-      const watchdog = setTimeout(() => {
-        const sinceLastEvent = Date.now() - this.lastEventTime
-        if (sinceLastEvent >= FeishuAdapter.STALE_THRESHOLD_MS) {
-          console.warn(`[Feishu] No events for ${Math.round(sinceLastEvent / 1000)}s — assuming WSClient disconnected`)
-          this.running = false
-        }
-        cleanup()
-        resolve(null)
-      }, FeishuAdapter.WATCHDOG_TIMEOUT_MS)
+      // No watchdog timeout — just wait for a message or abort signal.
+      // The WebSocket SDK handles its own connection health (ping/pong).
+      // Previous watchdog incorrectly treated normal idle periods as disconnects,
+      // causing forced reconnections that broke working connections.
 
       // IMPORTANT: set messageWaiter BEFORE addEventListener to prevent dangling waiter
-      // If signal is already aborted, addEventListener fires onAbort synchronously,
-      // which clears messageWaiter. Setting it first ensures cleanup works correctly.
       this.messageWaiter = (msg) => {
         signal.removeEventListener('abort', onAbort)
         cleanup()
