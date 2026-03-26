@@ -45,7 +45,7 @@ export function AppLayout() {
   const [editorWidth, setEditorWidth] = useState(520)
   const [projectModalOpen, setProjectModalOpen] = useState(false)
 
-  const { settings, loading: settingsLoading, updateSettings, refreshSettings } = useSettings()
+  const { settings, loading: settingsLoading, updateSettings } = useSettings()
   // Per-session permission mode override (null = use global Settings default)
   const [sessionPermMode, setSessionPermMode] = useState<string | null>(null)
   // Per-session thinking mode override (null = use global Settings default)
@@ -183,8 +183,6 @@ export function AppLayout() {
   refreshSessionsRef.current = refreshSessions
   const loadMessagesRef = useRef(loadMessages)
   loadMessagesRef.current = loadMessages
-  const refreshSettingsRef = useRef(refreshSettings)
-  refreshSettingsRef.current = refreshSettings
 
   // SSE listener for real-time IM Bridge → Desktop sync
   // Connection established once, uses refs for current values (P14 fix)
@@ -209,7 +207,6 @@ export function AppLayout() {
 
       eventSource.addEventListener('im:command', () => {
         refreshSessionsRef.current()
-        refreshSettingsRef.current()  // Sync settings changes from IM commands (e.g. /mode)
       })
 
       eventSource.addEventListener('im:session-changed', (e: MessageEvent) => {

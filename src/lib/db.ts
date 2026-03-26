@@ -392,6 +392,11 @@ export function getDb(): Database.Database {
     db.exec("ALTER TABLE channel_bindings ADD COLUMN session_id TEXT DEFAULT NULL")
   }
 
+  // Migrate sessions: add permission_mode column (per-session override, like model)
+  if (!sessionColNames.includes('permission_mode')) {
+    db.exec("ALTER TABLE sessions ADD COLUMN permission_mode TEXT NOT NULL DEFAULT ''")
+  }
+
   // IM Bridge Layer 5 tables: outbound refs, audit logs, dedup
   db.exec(`
     CREATE TABLE IF NOT EXISTS channel_outbound_refs (

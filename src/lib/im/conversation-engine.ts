@@ -44,10 +44,15 @@ export class ConversationEngine {
   ): Promise<ConversationResult> {
     const db = getDb()
 
-    // Get IM permission mode
-    const permModeSetting = db.prepare("SELECT value FROM settings WHERE key = 'im_permission_mode'")
-      .get() as { value: string } | undefined
-    const permissionMode = permModeSetting?.value || 'confirm'
+    // Get permission mode: session override first, then global default
+    const sessionPerm = db.prepare('SELECT permission_mode FROM sessions WHERE id = ?')
+      .get(sessionId) as { permission_mode: string } | undefined
+    let permissionMode = sessionPerm?.permission_mode || ''
+    if (!permissionMode) {
+      const permModeSetting = db.prepare("SELECT value FROM settings WHERE key = 'im_permission_mode'")
+        .get() as { value: string } | undefined
+      permissionMode = permModeSetting?.value || 'confirm'
+    }
 
     // Save user message
     const userMsgId = crypto.randomUUID()
