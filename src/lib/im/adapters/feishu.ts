@@ -42,6 +42,10 @@ export class FeishuAdapter extends ChannelAdapter {
   // Track pending permission request per chat for simplified "allow"/"deny" responses (P30: also tracks senderId)
   private pendingPermByChat = new Map<string, { requestIdPrefix: string; senderId: string }>() // chatId → { requestIdPrefix, senderId }
 
+  // Adapter-level dedup: skip events the SDK re-delivers (Feishu server retry)
+  private seenMessageIds = new Set<string>()
+  private seenMessageIdTimer: ReturnType<typeof setTimeout> | null = null
+
   // ---------------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------------
@@ -72,16 +76,17 @@ export class FeishuAdapter extends ChannelAdapter {
     await this.fetchBotInfo()
 
     // Create event dispatcher
+    // IMPORTANT: await handleIncomingMessage so the SDK sends ack AFTER processing.
+    // Without await, the SDK acks with empty response; Feishu server may redeliver.
     const dispatcher = new Lark.EventDispatcher({}).register({
       'im.message.receive_v1': async (data) => {
-        this.handleIncomingMessage(data)
+        await this.handleIncomingMessage(data)
       },
     })
 
     // Create and start WSClient
-    // autoReconnect: false — we handle reconnection ourselves via watchdog (10s).
-    // SDK's autoReconnect has 120s+ delay which is too slow.
-    // SDK's autoReconnect also conflicts with our BridgeManager reconnection.
+    // autoReconnect: false — we handle reconnection via BridgeManager.
+    // SDK's autoReconnect has 120s+ delay and conflicts with BridgeManager reconnection.
     this.wsClient = new Lark.WSClient({
       ...sdkConfig,
       loggerLevel: Lark.LoggerLevel.info,
@@ -121,6 +126,11 @@ export class FeishuAdapter extends ChannelAdapter {
     this.botIds.clear()
     this.pendingPermByChat.clear()
     this.lastEventTime = 0
+    this.seenMessageIds.clear()
+    if (this.seenMessageIdTimer) {
+      clearTimeout(this.seenMessageIdTimer)
+      this.seenMessageIdTimer = null
+    }
 
     console.log('[Feishu] Stopped')
   }
@@ -441,7 +451,35 @@ export class FeishuAdapter extends ChannelAdapter {
       const senderId = sender.sender_id?.open_id || ''
 
       const msgId = message.message_id || ''
-      console.log(`[Feishu] Incoming: type=${message.message_type}, chat=${chatId}, chatType=${chatType}, sender=${senderId}, msgId=${msgId}`)
+      console.log(`[Feishu] Incoming: type=${message.message_type}, chat=${chatId}, chatType=${chatType}, sender=${senderId}, senderType=${sender.sender_type}, msgId=${msgId}`)
+
+      // Skip bot's own messages (sender_type 'app' = bot message)
+      if (sender.sender_type === 'app') {
+        console.log(`[Feishu] Skipping bot's own message: msgId=${msgId}`)
+        return
+      }
+
+      // Skip messages from known bot IDs (extra safety)
+      if (senderId && this.botIds.has(senderId)) {
+        console.log(`[Feishu] Skipping message from known bot ID: ${senderId}`)
+        return
+      }
+
+      // Adapter-level dedup: skip events the SDK/Feishu server re-delivers
+      if (msgId) {
+        if (this.seenMessageIds.has(msgId)) {
+          console.log(`[Feishu] Adapter dedup: skipping already-seen msgId=${msgId}`)
+          return
+        }
+        this.seenMessageIds.add(msgId)
+        // Clear seen IDs periodically (every 5 minutes)
+        if (!this.seenMessageIdTimer) {
+          this.seenMessageIdTimer = setTimeout(() => {
+            this.seenMessageIds.clear()
+            this.seenMessageIdTimer = null
+          }, 300_000)
+        }
+      }
 
       const isDm = chatType === 'p2p'
       const msgType = message.message_type || ''
