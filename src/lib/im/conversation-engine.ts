@@ -291,7 +291,8 @@ export class ConversationEngine {
     }
 
     // Detect file/image attachments from tool use and send via onAttachments
-    const attachments = this.resolveAttachments(this.extractFilePaths(fileHints))
+    const fileHintBlocks = fileHints.map(h => ({ type: 'tool_use' as const, name: h.tool, input: h.input }))
+    const attachments = resolveFileAttachments(extractFilePaths(fileHintBlocks as Record<string, unknown>[]))
     if (attachments.length > 0 && callbacks.onAttachments) {
       try { await callbacks.onAttachments(attachments) } catch (err) { console.warn('[ConversationEngine] onAttachments error:', err instanceof Error ? err.message : err) }
     }
@@ -334,68 +335,70 @@ export class ConversationEngine {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Attachment detection — extract files created by Agent tool use
-  // ---------------------------------------------------------------------------
+}
 
-  private extractFilePaths(fileHints: Array<{ tool: string; input: Record<string, unknown> }>): string[] {
-    const paths = new Set<string>()
-    for (const hint of fileHints) {
-      if (hint.tool === 'Write') {
-        const fp = String(hint.input.file_path || hint.input.path || '')
-        if (fp) paths.add(fp)
-      } else if (hint.tool === 'Bash') {
-        const cmd = String(hint.input.command || '')
-        const patterns = [
-          /curl\s+.*?-o\s+["']?(\S+?)["']?(?:\s|$)/g,
-          /wget\s+.*?-O\s+["']?(\S+?)["']?(?:\s|$)/g,
-        ]
-        for (const pattern of patterns) {
-          let match
-          while ((match = pattern.exec(cmd)) !== null) {
-            paths.add(match[1])
-          }
+// ---------------------------------------------------------------------------
+// Attachment detection — shared by ConversationEngine (IM) and chat route (desktop)
+// ---------------------------------------------------------------------------
+
+/** Extract file paths from tool_use blocks (Write file_path, Bash curl -o / wget -O) */
+export function extractFilePaths(blocks: Record<string, unknown>[]): string[] {
+  const paths = new Set<string>()
+  for (const block of blocks) {
+    if (block.type !== 'tool_use') continue
+    const name = block.name as string
+    const input = block.input as Record<string, unknown>
+    if (name === 'Write') {
+      const fp = String(input.file_path || input.path || '')
+      if (fp) paths.add(fp)
+    } else if (name === 'Bash') {
+      const cmd = String(input.command || '')
+      const patterns = [
+        /curl\s+.*?-o\s+["']?(\S+?)["']?(?:\s|$)/g,
+        /wget\s+.*?-O\s+["']?(\S+?)["']?(?:\s|$)/g,
+      ]
+      for (const pattern of patterns) {
+        let match
+        while ((match = pattern.exec(cmd)) !== null) {
+          paths.add(match[1])
         }
       }
     }
-    return [...paths]
   }
+  return [...paths]
+}
 
-  private resolveAttachments(filePaths: string[]): import('./types').OutboundAttachment[] {
-    const attachments: import('./types').OutboundAttachment[] = []
-    const imageExts = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'])
-    const skipExts = new Set(['.ts', '.js', '.py', '.go', '.rs', '.java', '.cpp', '.h',
-      '.json', '.yaml', '.yml', '.toml', '.xml', '.md', '.txt', '.csv', '.sh', '.sql',
-      '.html', '.css', '.scss', '.lock', '.log', '.env', '.gitignore'])
+const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'])
+const SKIP_EXTS = new Set(['.ts', '.js', '.py', '.go', '.rs', '.java', '.cpp', '.h',
+  '.json', '.yaml', '.yml', '.toml', '.xml', '.md', '.txt', '.csv', '.sh', '.sql',
+  '.html', '.css', '.scss', '.lock', '.log', '.env', '.gitignore'])
+const MIME_MAP: Record<string, string> = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp',
+  '.pdf': 'application/pdf', '.zip': 'application/zip',
+  '.doc': 'application/msword', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xls': 'application/vnd.ms-excel', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.ppt': 'application/vnd.ms-powerpoint', '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+}
 
-    for (const fp of filePaths) {
-      try {
-        if (!fs.existsSync(fp)) continue
-        const stat = fs.statSync(fp)
-        if (!stat.isFile() || stat.size === 0 || stat.size > 20 * 1024 * 1024) continue
-
-        const ext = path.extname(fp).toLowerCase()
-        if (skipExts.has(ext)) continue
-
-        const isImage = imageExts.has(ext)
-        const mimeMap: Record<string, string> = {
-          '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-          '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp',
-          '.pdf': 'application/pdf', '.zip': 'application/zip',
-          '.doc': 'application/msword', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          '.xls': 'application/vnd.ms-excel', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          '.ppt': 'application/vnd.ms-powerpoint', '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        }
-
-        attachments.push({
-          filePath: fp,
-          name: path.basename(fp),
-          mimeType: mimeMap[ext] || 'application/octet-stream',
-          size: stat.size,
-          isImage,
-        })
-      } catch { /* skip unreadable files */ }
-    }
-    return attachments
+/** Resolve file paths to OutboundAttachment objects. Skips source code, empty, and >20MB files. */
+export function resolveFileAttachments(filePaths: string[]): import('./types').OutboundAttachment[] {
+  const attachments: import('./types').OutboundAttachment[] = []
+  for (const fp of filePaths) {
+    try {
+      if (!fs.existsSync(fp)) continue
+      const stat = fs.statSync(fp)
+      if (!stat.isFile() || stat.size === 0 || stat.size > 20 * 1024 * 1024) continue
+      const ext = path.extname(fp).toLowerCase()
+      if (SKIP_EXTS.has(ext)) continue
+      attachments.push({
+        filePath: fp,
+        name: path.basename(fp),
+        mimeType: MIME_MAP[ext] || 'application/octet-stream',
+        size: stat.size,
+        isImage: IMAGE_EXTS.has(ext),
+      })
+    } catch { /* skip unreadable files */ }
   }
+  return attachments
 }

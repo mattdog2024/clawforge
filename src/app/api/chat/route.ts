@@ -1,5 +1,6 @@
 import { getDb } from '@/lib/db'
 import crypto from 'crypto'
+import fs from 'fs'
 import { createForgeQuery } from '@/lib/sdk/client'
 import type { ForgeAttachment } from '@/lib/sdk/client'
 import path from 'path'
@@ -10,6 +11,7 @@ import { createPermissionBridge, cleanupStaleSessionAllowances } from '@/lib/sdk
 import { archiveOldMemories } from '@/lib/workspace-fs'
 import { resolveProvider } from '@/lib/provider'
 import { runSessionCleanup } from '@/lib/session-cleanup'
+import { extractFilePaths, resolveFileAttachments } from '@/lib/im/conversation-engine'
 import type { Query } from '@anthropic-ai/claude-agent-sdk'
 
 export const runtime = 'nodejs'
@@ -234,8 +236,30 @@ export async function POST(req: Request) {
         await drainQuery(retryQ, mapper, emit)
       }
 
-      // Save assistant message to SQLite (dual persistence)
+      // Detect file/image attachments created by Agent and append as content blocks
       const blocks = mapper.getBlocks()
+      const detectedFiles = resolveFileAttachments(extractFilePaths(blocks as Record<string, unknown>[]))
+      const uploadsDir = getUploadsDir()
+      for (const att of detectedFiles) {
+        try {
+          // Copy to uploads dir so it's accessible via /api/upload/
+          const destName = `agent_${Date.now()}_${att.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
+          const destPath = path.join(uploadsDir, destName)
+          fs.copyFileSync(att.filePath, destPath)
+          if (att.isImage) {
+            blocks.push({ type: 'image_attachment', url: `/api/upload/${destName}`, name: att.name })
+          } else {
+            blocks.push({ type: 'file_attachment', url: `/api/upload/${destName}`, name: att.name, size: att.size, mimeType: att.mimeType })
+          }
+          // Emit SSE event so frontend renders immediately
+          await emit({ type: 'attachment', attachment: att.isImage
+            ? { type: 'image_attachment', url: `/api/upload/${destName}`, name: att.name }
+            : { type: 'file_attachment', url: `/api/upload/${destName}`, name: att.name, size: att.size, mimeType: att.mimeType }
+          })
+        } catch { /* skip unreadable files */ }
+      }
+
+      // Save assistant message to SQLite (dual persistence)
       const assistantMsgId = crypto.randomUUID()
       db.prepare('INSERT INTO messages (id, session_id, role, content) VALUES (?, ?, ?, ?)').run(
         assistantMsgId, sessionId, 'assistant', JSON.stringify(blocks)

@@ -1088,6 +1088,32 @@ function AssistantMessage({ blocks, streaming, isThinking, thinkingMode, onPermi
                 }
                 return <PermissionBlock key={block.requestId} requestId={block.requestId} toolName={block.toolName} toolInput={block.toolInput} status={block.status} toolFailed={block.toolFailed} onDecision={onPermissionDecision} />
               }
+              case 'image_attachment': {
+                const img = block as { url: string; name: string }
+                return (
+                  <div key={`img-${i}`} className="mt-2">
+                    <img
+                      src={img.url}
+                      alt={img.name}
+                      className="rounded-lg max-w-[300px] max-h-[300px] object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => window.open(img.url, '_blank')}
+                    />
+                  </div>
+                )
+              }
+              case 'file_attachment': {
+                const file = block as { url: string; name: string; size: number; mimeType: string }
+                const ext = file.name.split('.').pop()?.toLowerCase() || ''
+                const icon = ['pdf'].includes(ext) ? '📄' : ['doc', 'docx'].includes(ext) ? '📝' : ['xls', 'xlsx'].includes(ext) ? '📊' : '📁'
+                const sizeStr = file.size > 1024 * 1024 ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : file.size > 1024 ? `${(file.size / 1024).toFixed(0)} KB` : `${file.size} B`
+                return (
+                  <a key={`file-${i}`} href={file.url} target="_blank" rel="noreferrer" className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-elevated border border-subtle hover:bg-surface-hover transition-colors max-w-fit">
+                    <span className="text-[14px]">{icon}</span>
+                    <span className="text-[13px] text-primary truncate max-w-[250px]">{file.name}</span>
+                    <span className="text-[11px] text-muted shrink-0">{sizeStr}</span>
+                  </a>
+                )
+              }
               default:
                 return null
             }
