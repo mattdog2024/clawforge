@@ -235,6 +235,7 @@ export class ConversationEngine {
   ): Promise<ConversationResult> {
     const allBlocks: Record<string, unknown>[] = []
     const toolsUsed: string[] = []
+    const fileHints: Array<{ tool: string; input: Record<string, unknown> }> = []
     let responseText = ''       // Authoritative text from complete 'assistant' messages
     let streamingText = ''      // Incremental text from stream_event deltas (for live preview)
     let typingSent = false
@@ -247,8 +248,8 @@ export class ConversationEngine {
         try { await callbacks.onTyping() } catch (err) { console.warn('[ConversationEngine] onTyping error:', err instanceof Error ? err.message : err) }
       }
 
-      // Collect blocks
-      this.collectFromMessage(sdkMsg, allBlocks, toolsUsed)
+      // Collect blocks + track file-creating tools
+      this.collectFromMessage(sdkMsg, allBlocks, toolsUsed, fileHints)
 
       // Accumulate text from streaming deltas (real-time preview)
       if (sdkMsg.type === 'stream_event') {
@@ -289,7 +290,13 @@ export class ConversationEngine {
       try { await callbacks.onFinal(finalText) } catch (err) { console.warn('[ConversationEngine] onFinal error:', err instanceof Error ? err.message : err) }
     }
 
-    return { text: finalText, toolsUsed, blocks: allBlocks }
+    // Detect file/image attachments from tool use and send via onAttachments
+    const attachments = this.resolveAttachments(this.extractFilePaths(fileHints))
+    if (attachments.length > 0 && callbacks.onAttachments) {
+      try { await callbacks.onAttachments(attachments) } catch (err) { console.warn('[ConversationEngine] onAttachments error:', err instanceof Error ? err.message : err) }
+    }
+
+    return { text: finalText, toolsUsed, blocks: allBlocks, attachments }
   }
 
   // ---------------------------------------------------------------------------
@@ -300,6 +307,7 @@ export class ConversationEngine {
     msg: SDKMessage,
     allBlocks: Record<string, unknown>[],
     toolsUsed: string[],
+    fileHints: Array<{ tool: string; input: Record<string, unknown> }>,
   ): void {
     if (msg.type === 'assistant') {
       for (const block of msg.message.content) {
@@ -308,6 +316,10 @@ export class ConversationEngine {
         } else if (block.type === 'tool_use') {
           allBlocks.push({ type: 'tool_use', id: block.id, name: block.name, input: block.input })
           toolsUsed.push(block.name)
+          // Track file-creating tools for attachment detection
+          if (['Write', 'Bash'].includes(block.name)) {
+            fileHints.push({ tool: block.name, input: block.input as Record<string, unknown> })
+          }
         }
       }
     } else if (msg.type === 'tool_use_summary') {
@@ -320,5 +332,70 @@ export class ConversationEngine {
         })
       }
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Attachment detection — extract files created by Agent tool use
+  // ---------------------------------------------------------------------------
+
+  private extractFilePaths(fileHints: Array<{ tool: string; input: Record<string, unknown> }>): string[] {
+    const paths = new Set<string>()
+    for (const hint of fileHints) {
+      if (hint.tool === 'Write') {
+        const fp = String(hint.input.file_path || hint.input.path || '')
+        if (fp) paths.add(fp)
+      } else if (hint.tool === 'Bash') {
+        const cmd = String(hint.input.command || '')
+        const patterns = [
+          /curl\s+.*?-o\s+["']?(\S+?)["']?(?:\s|$)/g,
+          /wget\s+.*?-O\s+["']?(\S+?)["']?(?:\s|$)/g,
+        ]
+        for (const pattern of patterns) {
+          let match
+          while ((match = pattern.exec(cmd)) !== null) {
+            paths.add(match[1])
+          }
+        }
+      }
+    }
+    return [...paths]
+  }
+
+  private resolveAttachments(filePaths: string[]): import('./types').OutboundAttachment[] {
+    const attachments: import('./types').OutboundAttachment[] = []
+    const imageExts = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'])
+    const skipExts = new Set(['.ts', '.js', '.py', '.go', '.rs', '.java', '.cpp', '.h',
+      '.json', '.yaml', '.yml', '.toml', '.xml', '.md', '.txt', '.csv', '.sh', '.sql',
+      '.html', '.css', '.scss', '.lock', '.log', '.env', '.gitignore'])
+
+    for (const fp of filePaths) {
+      try {
+        if (!fs.existsSync(fp)) continue
+        const stat = fs.statSync(fp)
+        if (!stat.isFile() || stat.size === 0 || stat.size > 20 * 1024 * 1024) continue
+
+        const ext = path.extname(fp).toLowerCase()
+        if (skipExts.has(ext)) continue
+
+        const isImage = imageExts.has(ext)
+        const mimeMap: Record<string, string> = {
+          '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+          '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp',
+          '.pdf': 'application/pdf', '.zip': 'application/zip',
+          '.doc': 'application/msword', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          '.xls': 'application/vnd.ms-excel', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          '.ppt': 'application/vnd.ms-powerpoint', '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        }
+
+        attachments.push({
+          filePath: fp,
+          name: path.basename(fp),
+          mimeType: mimeMap[ext] || 'application/octet-stream',
+          size: stat.size,
+          isImage,
+        })
+      } catch { /* skip unreadable files */ }
+    }
+    return attachments
   }
 }

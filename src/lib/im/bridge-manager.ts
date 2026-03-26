@@ -14,6 +14,7 @@
  *   7. sessionLock.release(key)
  */
 
+import fs from 'fs'
 import { getDb } from '@/lib/db'
 import type { ChannelAdapter } from './adapters/base'
 import { createAdapter } from './adapters/registry'
@@ -462,6 +463,23 @@ class BridgeManager {
             } else {
               // Send final message directly (skipDedup: legitimate responses should never be suppressed)
               await this.delivery.deliver(adapter, msg.chatId, text, { skipDedup: true })
+            }
+          },
+
+          onAttachments: async (attachments) => {
+            for (const att of attachments) {
+              try {
+                const buffer = fs.readFileSync(att.filePath)
+                if (att.isImage) {
+                  await this.delivery.deliverImage(adapter, msg.chatId, buffer, att.name)
+                } else {
+                  await this.delivery.deliverFile(adapter, msg.chatId, buffer, att.name)
+                }
+                console.log(`[BridgeManager] Sent attachment: ${att.name} (${att.isImage ? 'image' : 'file'}, ${att.size} bytes)`)
+              } catch (err) {
+                console.warn(`[BridgeManager] Failed to send attachment ${att.name}:`, err instanceof Error ? err.message : err)
+                await this.delivery.deliver(adapter, msg.chatId, `📎 ${att.name} (${att.size} bytes)`, { skipDedup: true })
+              }
             }
           },
 

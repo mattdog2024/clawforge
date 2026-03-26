@@ -494,6 +494,12 @@ When using tools:
 - Be careful with destructive operations — ask before deleting files or making irreversible changes
 - **NEVER use Write or Edit for files inside \`.claude/\` directories** — the SDK blocks these. Use Bash with heredoc instead: \`cat > .claude/FILE << 'FORGEEOF' ... FORGEEOF\`
 
+File attachments:
+- When the user asks you to find, download, or generate an image or file, save it to the workspace directory using Bash (e.g. \`curl -o image.png URL\`).
+- Files you create via Write or download via Bash are **automatically detected and sent to the user as IM attachments** (images, PDFs, archives, etc.).
+- Source code files (.ts, .js, .py, etc.) are NOT auto-sent as attachments — only "deliverable" files.
+- Prefer common formats: PNG/JPEG for images, PDF for documents.
+
 Safety:
 - Never expose secrets, API keys, or credentials
 - Assist with authorized security testing only

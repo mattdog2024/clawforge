@@ -278,6 +278,49 @@ export class FeishuAdapter extends ChannelAdapter {
     }
   }
 
+  async sendFile(chatId: string, fileBuffer: Buffer, filename: string, caption?: string): Promise<void> {
+    if (!this.client) {
+      if (caption) await this.send({ chatId, text: `📎 ${filename}${caption ? ` — ${caption}` : ''}` })
+      return
+    }
+
+    try {
+      const apiBase = this.platform === 'lark' ? 'https://open.larksuite.com/open-apis' : 'https://open.feishu.cn/open-apis'
+      const tokenRes = await fetch(`${apiBase}/auth/v3/tenant_access_token/internal`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app_id: this.appId, app_secret: this.appSecret }),
+      })
+      const tokenData = await tokenRes.json() as { tenant_access_token?: string }
+      if (!tokenData.tenant_access_token) throw new Error('No token')
+
+      const formData = new FormData()
+      formData.append('file_type', 'stream')
+      formData.append('file_name', filename)
+      formData.append('file', new Blob([new Uint8Array(fileBuffer)]), filename)
+
+      const uploadRes = await fetch(`${apiBase}/im/v1/files`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${tokenData.tenant_access_token}` },
+        body: formData,
+      })
+      const uploadData = await uploadRes.json() as { data?: { file_key?: string } }
+      const fileKey = uploadData.data?.file_key
+
+      if (fileKey) {
+        await this.client.im.message.create({
+          params: { receive_id_type: 'chat_id' },
+          data: { receive_id: chatId, msg_type: 'file', content: JSON.stringify({ file_key: fileKey }) },
+        })
+        if (caption) await this.send({ chatId, text: caption })
+      } else {
+        await this.send({ chatId, text: `📎 ${filename}${caption ? ` — ${caption}` : ''}` })
+      }
+    } catch (err) {
+      console.warn('[Feishu] sendFile failed:', err instanceof Error ? err.message : err)
+      await this.send({ chatId, text: `📎 ${filename}${caption ? ` — ${caption}` : ''}` })
+    }
+  }
+
   async sendTypingIndicator(_chatId: string): Promise<void> {
     // Feishu doesn't have a typing indicator API
   }

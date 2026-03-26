@@ -196,6 +196,22 @@ export class TelegramAdapter extends ChannelAdapter {
     }
   }
 
+  async sendFile(chatId: string, fileBuffer: Buffer, filename: string, caption?: string): Promise<void> {
+    const formData = new FormData()
+    formData.append('chat_id', chatId)
+    formData.append('document', new Blob([new Uint8Array(fileBuffer)]), filename)
+    if (caption) formData.append('caption', caption)
+
+    const res = await fetch(`${API_BASE}${this.token}/sendDocument`, {
+      method: 'POST',
+      body: formData,
+    })
+    if (!res.ok) {
+      console.warn(`[Telegram] sendDocument failed (${res.status}), falling back to text`)
+      await this.send({ chatId, text: `📎 ${filename}${caption ? ` — ${caption}` : ''}` })
+    }
+  }
+
   async sendTypingIndicator(chatId: string): Promise<void> {
     try {
       await this.apiCall('sendChatAction', { chat_id: chatId, action: 'typing' })

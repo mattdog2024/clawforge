@@ -64,6 +64,11 @@ export abstract class ChannelAdapter {
   abstract sendImage(chatId: string, imageBuffer: Buffer, caption?: string): Promise<void>
 
   /**
+   * Send a file (non-image) to the platform.
+   */
+  abstract sendFile(chatId: string, fileBuffer: Buffer, filename: string, caption?: string): Promise<void>
+
+  /**
    * Send a typing indicator to the platform.
    */
   abstract sendTypingIndicator(chatId: string): Promise<void>

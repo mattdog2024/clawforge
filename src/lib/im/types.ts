@@ -94,10 +94,20 @@ export interface BridgeState {
 // Conversation result (L4 → L2)
 // ---------------------------------------------------------------------------
 
+/** An outbound file/image attachment detected from Agent tool use */
+export interface OutboundAttachment {
+  filePath: string
+  name: string
+  mimeType: string
+  size: number
+  isImage: boolean
+}
+
 export interface ConversationResult {
   text: string
   toolsUsed: string[]
   blocks: Record<string, unknown>[]
+  attachments: OutboundAttachment[]
 }
 
 // ---------------------------------------------------------------------------
@@ -108,6 +118,8 @@ export interface ConversationCallbacks {
   onTyping: () => Promise<void>
   onDraft: (partialText: string) => Promise<void>
   onFinal: (text: string) => Promise<void>
+  /** Called after onFinal with files/images the Agent created during the turn */
+  onAttachments?: (attachments: OutboundAttachment[]) => Promise<void>
   onPermissionRequest: (req: ImPermissionRequest) => Promise<'allow' | 'deny'>
   /** AbortSignal for cancelling the SDK query (timeout or /stop command) */
   abortSignal?: AbortSignal

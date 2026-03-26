@@ -300,6 +300,30 @@ export class DeliveryLayer {
       ).run(crypto.randomUUID(), channelType, chatId, action, JSON.stringify(details))
     } catch { /* ignore audit errors */ }
   }
+
+  // ---------------------------------------------------------------------------
+  // Binary delivery (images / files)
+  // ---------------------------------------------------------------------------
+
+  async deliverImage(adapter: ChannelAdapter, chatId: string, imageBuffer: Buffer, caption?: string): Promise<void> {
+    await this.acquireToken(chatId, adapter.channelType)
+    try {
+      await adapter.sendImage(chatId, imageBuffer, caption)
+      this.logAudit('send_image', adapter.channelType, chatId, { caption })
+    } catch (err) {
+      console.error('[Delivery] sendImage failed:', err instanceof Error ? err.message : err)
+    }
+  }
+
+  async deliverFile(adapter: ChannelAdapter, chatId: string, fileBuffer: Buffer, filename: string, caption?: string): Promise<void> {
+    await this.acquireToken(chatId, adapter.channelType)
+    try {
+      await adapter.sendFile(chatId, fileBuffer, filename, caption)
+      this.logAudit('send_file', adapter.channelType, chatId, { filename, caption })
+    } catch (err) {
+      console.error('[Delivery] sendFile failed:', err instanceof Error ? err.message : err)
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

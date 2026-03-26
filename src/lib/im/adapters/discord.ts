@@ -174,6 +174,27 @@ export class DiscordAdapter extends ChannelAdapter {
     }
   }
 
+  async sendFile(chatId: string, fileBuffer: Buffer, filename: string, caption?: string): Promise<void> {
+    try {
+      const formData = new FormData()
+      if (caption) formData.append('payload_json', JSON.stringify({ content: caption }))
+      formData.append('files[0]', new Blob([new Uint8Array(fileBuffer)]), filename)
+
+      const res = await fetch(`${DISCORD_API}/channels/${chatId}/messages`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bot ${this.token}` },
+        body: formData,
+      })
+      if (!res.ok) {
+        console.warn(`[Discord] sendFile failed (${res.status}), falling back to text`)
+        await this.send({ chatId, text: `📎 ${filename}${caption ? ` — ${caption}` : ''}` })
+      }
+    } catch (err) {
+      console.warn('[Discord] sendFile error:', err instanceof Error ? err.message : err)
+      await this.send({ chatId, text: `📎 ${filename}${caption ? ` — ${caption}` : ''}` })
+    }
+  }
+
   async sendTypingIndicator(chatId: string): Promise<void> {
     try {
       await this.discordApi('POST', `/channels/${chatId}/typing`, null)
