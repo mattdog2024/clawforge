@@ -25,6 +25,8 @@
 
 **Memory that persists.** Forge maintains rich, structured memory across sessions — not just a single CLAUDE.md, but a full system: MEMORY.md index (first 200 lines auto-loaded), Agent-driven daily logs, domain-specific topic files, and a 7-day auto-archive that keeps everything without cluttering context.
 
+<img width="1024" height="1024" alt="ChatGPT Image Mar 25, 2026, 09_55_27 PM" src="https://github.com/user-attachments/assets/c3a85785-4264-4a7a-9b22-843a613ff96d" />
+
 ---
 
 ## Quick Start
