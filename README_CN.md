@@ -395,3 +395,8 @@ Forge 的设计灵感来自 Peter Steinberger 的 [OpenClaw](https://openclaw.ai
 [Apache License 2.0](LICENSE)
 
 Copyright 2026 FEICAI
+
+## 加入废才俱乐部
+<img width="2745" height="1200" alt="废才俱乐部学堂首页" src="https://github.com/user-attachments/assets/8b615482-be9a-4679-8e47-b25381c67be6" />
+
+
