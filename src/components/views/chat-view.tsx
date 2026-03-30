@@ -1960,18 +1960,8 @@ function getToolParamPreview(name: string, input: Record<string, unknown>): stri
       if (!oldStr && !newStr) return null
       return `→ ${input.file_path || input.path || 'file'}\n- ${oldStr.split('\n')[0]}\n+ ${newStr.split('\n')[0]}`
     }
-    case 'Read':
-    case 'read_file':
-      return input.file_path || input.path ? `→ ${input.file_path || input.path}` : null
-    case 'WebSearch':
-      return input.query ? `🔍 ${input.query}` : null
-    case 'WebFetch':
-      return input.url ? `→ ${input.url}` : null
-    case 'Glob':
-      return input.pattern ? `pattern: ${input.pattern}` : null
-    case 'Grep':
-    case 'search_content':
-      return input.pattern ? `pattern: ${input.pattern}${input.path ? `  in: ${input.path}` : ''}` : null
+    // Read, WebSearch, WebFetch, Glob, Grep — summary in header is sufficient,
+    // no need for duplicate preview panel
     default:
       return null
   }
