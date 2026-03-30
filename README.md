@@ -394,3 +394,6 @@ Built with the [Claude Agent SDK](https://docs.anthropic.com/en/docs/agents-and-
 [Apache License 2.0](LICENSE)
 
 Copyright 2026 FEICAI
+
+## Join Feicai Club
+<img width="2745" height="1200" alt="废才俱乐部学堂首页" src="https://github.com/user-attachments/assets/537caca5-4cd2-430b-b5a0-ecde172915da" />
