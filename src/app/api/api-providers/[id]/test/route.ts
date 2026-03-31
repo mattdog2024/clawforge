@@ -7,6 +7,7 @@ interface DbProvider {
   api_key: string
   base_url: string
   provider: string
+  model_name?: string
 }
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -152,16 +153,47 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
           errorMsg = (data as { error?: { message?: string } }).error?.message || `HTTP ${chatRes.status}`
         }
       }
-    } else if (provider.provider === 'custom') {
-      // Custom provider: test via OpenAI-compatible /v1/models endpoint
-      const baseUrl = (provider.base_url || '').replace(/\/+$/, '')
-      const url = baseUrl.includes('/v1') ? `${baseUrl}/models` : `${baseUrl}/v1/models`
-      const headers: Record<string, string> = {}
-      if (provider.api_key) {
-        headers['Authorization'] = `Bearer ${provider.api_key}`
+    } else if (provider.provider === 'bailian-codingplan') {
+      // Bailian CodingPlan (DashScope): Anthropic-compatible mode
+      const baseUrl = provider.base_url || 'https://coding.dashscope.aliyuncs.com/apps/anthropic'
+      const url = baseUrl.replace(/\/+$/, '')
+      const res = await fetch(`${url}/v1/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${provider.api_key}`,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'qwen3-coder-plus',
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'hi' }],
+        }),
+        signal: AbortSignal.timeout(15000),
+      })
+      if (res.ok) {
+        ok = true
+      } else {
+        const data = await res.json().catch(() => ({}))
+        errorMsg = (data as { error?: { message?: string } }).error?.message || `HTTP ${res.status}`
       }
+    } else if (provider.provider === 'custom') {
+      // Custom providers are always Anthropic-compatible.
+      const baseUrl = (provider.base_url || '').replace(/\/+$/, '')
+      const modelName = provider.model_name || 'test-model'
+      const url = baseUrl.includes('/v1/messages') ? baseUrl : `${baseUrl.replace(/\/v1$/, '')}/v1/messages`
       const res = await fetch(url, {
-        headers,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${provider.api_key}`,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: modelName,
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'hi' }],
+        }),
         signal: AbortSignal.timeout(15000),
       })
       if (res.ok) {

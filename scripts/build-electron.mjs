@@ -85,6 +85,35 @@ function copyTemplates(standaloneDir) {
   }
 }
 
+// Step 3a: Copy runtime assets into the actual standalone app root.
+// Next.js emits server.js under standalone/Documents/... when the tracing root
+// is above the project. The server runs from that nested directory, so it
+// expects both .next/static and public/ to live there as well.
+function copyRuntimeAssets(standaloneDir) {
+  const appDir = join(standaloneDir, 'Documents', 'AI-code', 'forge')
+  if (!existsSync(appDir)) return
+
+  const staticSrc = join(process.cwd(), '.next', 'static')
+  const staticDest = join(appDir, '.next', 'static')
+  if (existsSync(staticSrc)) {
+    rmSync(staticDest, { recursive: true, force: true })
+    cpSync(staticSrc, staticDest, { recursive: true })
+    console.log('✅ Copied .next/static to standalone app root')
+  } else {
+    console.log('⚠️  No .next/static directory found — skipping')
+  }
+
+  const publicSrc = join(process.cwd(), 'public')
+  const publicDest = join(appDir, 'public')
+  if (existsSync(publicSrc)) {
+    rmSync(publicDest, { recursive: true, force: true })
+    cpSync(publicSrc, publicDest, { recursive: true })
+    console.log('✅ Copied public/ to standalone app root')
+  } else {
+    console.log('⚠️  No public/ directory found — skipping')
+  }
+}
+
 // Step 3b: Fix pnpm hoisting gaps in standalone node_modules.
 // pnpm uses a strict node_modules layout where dependencies are nested in .pnpm/.
 // Node.js require() can't resolve them from the top-level. Scan .pnpm/ and create
@@ -392,7 +421,16 @@ try {
   resolveSymlinks(standaloneDir)  // Second pass: resolve symlinks introduced by ensureExternalDeps
   cleanForgeData(standaloneDir)
   copyTemplates(standaloneDir)
+  copyRuntimeAssets(standaloneDir)
   stripDevPaths(standaloneDir)
+
+  // Also resolve symlinks in Documents/AI-code/forge/ directory (Next.js trace output)
+  const docsDir = join(standaloneDir, 'Documents', 'AI-code', 'forge')
+  if (existsSync(docsDir)) {
+    resolveSymlinks(docsDir)
+    fixPnpmHoisting(docsDir)
+    resolveSymlinks(docsDir)  // Second pass
+  }
 } catch {
   console.log('⚠️  No .next/standalone found — skipping symlink resolution (dev build?)')
 }

@@ -11,13 +11,14 @@ import { useSettings } from '@/hooks/use-settings'
 import { useApiProviders } from '@/hooks/use-api-providers'
 import type { ApiProvider } from '@/lib/types'
 
-const BUILTIN_PROVIDER_ORDER = ['anthropic', 'minimax', 'zhipu', 'moonshot', 'qwen'] as const
+const BUILTIN_PROVIDER_ORDER = ['anthropic', 'minimax', 'zhipu', 'moonshot', 'qwen', 'bailian-codingplan'] as const
 const PROVIDER_LABELS: Record<string, string> = {
   anthropic: 'Anthropic',
   minimax: 'MiniMax',
   zhipu: 'GLM',
   moonshot: 'Kimi',
   qwen: 'Qwen',
+  'bailian-codingplan': 'Bailian CodingPlan',
 }
 
 const PROVIDER_COLORS: Record<string, string> = {
@@ -26,6 +27,7 @@ const PROVIDER_COLORS: Record<string, string> = {
   zhipu: '#3B82F6',
   moonshot: '#8B5CF6',
   qwen: '#FF6A00',
+  'bailian-codingplan': '#00A3A3',
 }
 
 // MODELS loaded dynamically via useModels() hook inside the component.
@@ -695,7 +697,7 @@ function AddCustomProviderForm({ onCreate, onCancel }: {
         </div>
         <div className="space-y-1.5">
           <label className="text-[12px] font-medium text-secondary">{t('form.baseUrl')}</label>
-          <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://openrouter.ai/api/v1"
+          <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.example.com/anthropic"
             className="w-full h-9 px-3 rounded-lg bg-page border border-subtle text-[13px] text-primary placeholder:text-muted outline-none focus:border-indigo" />
         </div>
         <div className="space-y-1.5">
@@ -829,6 +831,9 @@ function ProviderConfig({ provider, onUpdate, onTestConnection, onDelete, settin
           <div className="space-y-1.5">
             <label className="text-[12px] text-secondary">{t('form.modelName')}</label>
             <DebouncedInput value={provider.modelName || ''} onSave={(v) => onUpdate(provider.id, { model_name: v })} placeholder="e.g. gpt-4o, deepseek-chat" />
+          </div>
+          <div className="text-[11px] text-tertiary bg-page/70 border border-subtle rounded-lg px-3 py-2">
+            {t('settings.customProviderAnthropicNote')}
           </div>
         </>
       )}

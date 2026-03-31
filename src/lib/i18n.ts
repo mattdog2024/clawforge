@@ -300,6 +300,8 @@ const translations: Record<Locale, Record<string, string>> = {
     'form.protocol': '协议',
     'form.model': '模型',
     'form.tools': '工具',
+    'protocol.anthropicCompatible': 'Anthropic 兼容',
+    'protocol.openaiCompatible': 'OpenAI 兼容',
 
     // Agent
     'agent.selectModel': '选择此子 Agent 使用的 Claude 模型',
@@ -325,7 +327,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'onboarding.cliActive': '已通过 CLI 连接，API Key 可选',
     'onboarding.getApiKey': '在 console.anthropic.com 获取密钥',
     'onboarding.otherProviders': '其他 AI 提供商（可选）',
-    'onboarding.providerInfo': 'MiniMax、GLM、Kimi、Qwen — 稍后在设置中配置',
+    'onboarding.providerInfo': 'MiniMax、GLM、Kimi、Qwen、百炼 CodingPlan — 稍后在设置中配置',
     'onboarding.selectFolder': '选择项目文件夹',
     'onboarding.folderDesc': '选择一个项目文件夹来开始...',
     'onboarding.chooseFolder': '选择项目文件夹',
@@ -333,7 +335,8 @@ const translations: Record<Locale, Record<string, string>> = {
     'onboarding.skipForNow': '跳过 — 稍后在设置中配置',
 
     // Settings additional
-    'settings.customProviderDesc': 'OpenAI 兼容的 API 端点（如 OpenRouter 等中转服务）',
+    'settings.customProviderDesc': '自定义提供商仅支持 Anthropic 兼容端点。填写 API Key、Anthropic 兼容 Base URL 和模型名称后即可用于 Forge 对话。',
+    'settings.customProviderAnthropicNote': 'Anthropic 兼容的自定义提供商会进入模型列表，并可用于实际对话。',
 
     // Settings - theme/session/thinking options
     'settings.themeDark': '深色',
@@ -846,6 +849,8 @@ const translations: Record<Locale, Record<string, string>> = {
     'form.protocol': 'Protocol',
     'form.model': 'Model',
     'form.tools': 'Tools',
+    'protocol.anthropicCompatible': 'Anthropic-compatible',
+    'protocol.openaiCompatible': 'OpenAI-compatible',
 
     // Agent
     'agent.selectModel': 'Select which Claude model this sub-agent uses',
@@ -871,7 +876,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'onboarding.cliActive': 'Already connected via CLI. API key is optional.',
     'onboarding.getApiKey': 'Get your key at console.anthropic.com',
     'onboarding.otherProviders': 'Other AI Providers (optional)',
-    'onboarding.providerInfo': 'MiniMax, GLM, Kimi, Qwen — configure later in Settings',
+    'onboarding.providerInfo': 'MiniMax, GLM, Kimi, Qwen, Bailian CodingPlan — configure later in Settings',
     'onboarding.selectFolder': 'Select Your Project Folder',
     'onboarding.folderDesc': 'Choose a project folder to get started...',
     'onboarding.chooseFolder': 'Choose a Project Folder',
@@ -879,7 +884,8 @@ const translations: Record<Locale, Record<string, string>> = {
     'onboarding.skipForNow': "Skip for now — I'll configure in Settings later",
 
     // Settings additional
-    'settings.customProviderDesc': 'OpenAI-compatible API endpoint (e.g. OpenRouter)',
+    'settings.customProviderDesc': 'Custom providers only support Anthropic-compatible endpoints. Enter the API key, Anthropic-compatible base URL, and model name to use them in Forge chats.',
+    'settings.customProviderAnthropicNote': 'Anthropic-compatible custom providers appear in model pickers and can be used for real chats.',
 
     // Settings - theme/session/thinking options
     'settings.themeDark': 'Dark',
