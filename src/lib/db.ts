@@ -336,8 +336,8 @@ export function getDb(): Database.Database {
   // Migrate api_providers: add protocol column for custom provider transport selection
   if (!apColNames.includes('protocol')) {
     db.exec("ALTER TABLE api_providers ADD COLUMN protocol TEXT NOT NULL DEFAULT 'anthropic-compatible'")
-    db.exec("UPDATE api_providers SET protocol = 'anthropic-compatible' WHERE provider = 'custom'")
   }
+  db.exec("UPDATE api_providers SET protocol = 'anthropic-compatible' WHERE provider = 'custom'")
 
   // Migrate hooks table: remove CHECK constraint on event column to support new event types
   // (notification, stop, subagent_start, subagent_stop)

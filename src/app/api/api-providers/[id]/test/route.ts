@@ -7,7 +7,6 @@ interface DbProvider {
   api_key: string
   base_url: string
   provider: string
-  protocol?: string
   model_name?: string
 }
 
@@ -179,55 +178,29 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         errorMsg = (data as { error?: { message?: string } }).error?.message || `HTTP ${res.status}`
       }
     } else if (provider.provider === 'custom') {
-      // Custom providers support two explicit protocols:
-      // - anthropic-compatible: used by Forge runtime + test via /v1/messages
-      // - openai-compatible: tested via /chat/completions to match OpenAI-compatible APIs
+      // Custom providers are always Anthropic-compatible.
       const baseUrl = (provider.base_url || '').replace(/\/+$/, '')
-      const protocol = provider.protocol || 'anthropic-compatible'
       const modelName = provider.model_name || 'test-model'
-      if (protocol === 'anthropic-compatible') {
-        const url = baseUrl.includes('/v1/messages') ? baseUrl : `${baseUrl.replace(/\/v1$/, '')}/v1/messages`
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${provider.api_key}`,
-            'anthropic-version': '2023-06-01',
-          },
-          body: JSON.stringify({
-            model: modelName,
-            max_tokens: 1,
-            messages: [{ role: 'user', content: 'hi' }],
-          }),
-          signal: AbortSignal.timeout(15000),
-        })
-        if (res.ok) {
-          ok = true
-        } else {
-          const data = await res.json().catch(() => ({}))
-          errorMsg = (data as { error?: { message?: string } }).error?.message || `HTTP ${res.status}`
-        }
+      const url = baseUrl.includes('/v1/messages') ? baseUrl : `${baseUrl.replace(/\/v1$/, '')}/v1/messages`
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${provider.api_key}`,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: modelName,
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'hi' }],
+        }),
+        signal: AbortSignal.timeout(15000),
+      })
+      if (res.ok) {
+        ok = true
       } else {
-        const url = baseUrl.includes('/chat/completions') ? baseUrl : `${baseUrl.replace(/\/$/, '')}/chat/completions`
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${provider.api_key}`,
-          },
-          body: JSON.stringify({
-            model: modelName,
-            max_tokens: 1,
-            messages: [{ role: 'user', content: 'hi' }],
-          }),
-          signal: AbortSignal.timeout(15000),
-        })
-        if (res.ok) {
-          ok = true
-        } else {
-          const data = await res.json().catch(() => ({}))
-          errorMsg = (data as { error?: { message?: string } }).error?.message || `HTTP ${res.status}`
-        }
+        const data = await res.json().catch(() => ({}))
+        errorMsg = (data as { error?: { message?: string } }).error?.message || `HTTP ${res.status}`
       }
     } else {
       // Unknown provider type: mark as configured

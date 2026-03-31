@@ -153,8 +153,8 @@ export function resolveProvider(model?: string): ResolvedProvider {
   const customModel = parseCustomModelId(model)
   if (customModel) {
     const customRow = db.prepare(
-      "SELECT id, name, api_key, base_url, protocol FROM api_providers WHERE provider = 'custom' AND id = ? AND model_name = ? AND api_key != ''"
-    ).get(customModel.providerId, customModel.modelName) as { id: string; name: string; api_key: string; base_url: string; protocol: string } | undefined
+      "SELECT id, name, api_key, base_url FROM api_providers WHERE provider = 'custom' AND id = ? AND model_name = ? AND api_key != ''"
+    ).get(customModel.providerId, customModel.modelName) as { id: string; name: string; api_key: string; base_url: string } | undefined
 
     if (customRow) {
       return {
@@ -171,8 +171,8 @@ export function resolveProvider(model?: string): ResolvedProvider {
   // Legacy custom provider lookup: match raw model_name in api_providers where provider='custom'
   if (model) {
     const customRow = db.prepare(
-      "SELECT id, name, api_key, base_url, protocol FROM api_providers WHERE provider = 'custom' AND model_name = ? AND api_key != ''"
-    ).get(model) as { id: string; name: string; api_key: string; base_url: string; protocol: string } | undefined
+      "SELECT id, name, api_key, base_url FROM api_providers WHERE provider = 'custom' AND model_name = ? AND api_key != ''"
+    ).get(model) as { id: string; name: string; api_key: string; base_url: string } | undefined
 
     if (customRow) {
       return {
