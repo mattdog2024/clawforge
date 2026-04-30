@@ -8,6 +8,10 @@ on:
     tags:
       - 'v*'
 
+# 强制使用 Node.js 24 运行 Actions，避免 Node.js 20 弃用警告
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -17,11 +21,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. 安装 Node.js 20
+      # 2. 安装 Node.js 22（LTS，兼容性好）
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       # 3. 安装 pnpm
       - name: Setup pnpm
@@ -43,20 +47,27 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pnpm-
 
-      # 5. 安装项目依赖
+      # 5. 缓存 Next.js 构建产物，加速二次构建
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ hashFiles('**/*.ts', '**/*.tsx') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-
+
+      # 6. 安装项目依赖
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # 6. 生成 Windows 图标（从 icns 转换，或使用占位图标）
+      # 7. 生成 Windows 图标（如果 build/icon.ico 不存在则创建占位图标）
       - name: Ensure Windows icon exists
         shell: pwsh
         run: |
           if (-not (Test-Path "build/icon.ico")) {
-            Write-Host "icon.ico not found, copying placeholder..."
-            # 用 Node.js 生成一个最小的有效 ICO 文件作为占位
+            Write-Host "icon.ico not found, creating placeholder..."
             node -e "
               const fs = require('fs');
-              // 最小有效 ICO 文件（1x1 像素）
               const ico = Buffer.from([
                 0,0,1,0,1,0,1,1,0,0,1,0,32,0,40,0,0,0,22,0,0,0,
                 40,0,0,0,1,0,0,0,2,0,0,0,1,0,32,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -67,24 +78,48 @@ jobs:
               console.log('Placeholder icon.ico created');
             "
           } else {
-            Write-Host "icon.ico already exists"
+            Write-Host "icon.ico already exists, skipping."
           }
 
-      # 7. 构建 Next.js + Electron，打包成 Windows NSIS 安装包
+      # 8. 修复 Next.js 在 Windows CI 上扫描受限目录的问题
+      #    outputFileTracingRoot 设为 process.cwd() 会导致 Next.js 尝试扫描
+      #    C:\Users\runneradmin\Application Data 等受权限保护的目录
+      #    通过环境变量将其限制在项目目录内
+      - name: Patch next.config for Windows CI
+        shell: pwsh
+        run: |
+          $config = Get-Content next.config.ts -Raw
+          # 将 outputFileTracingRoot: process.cwd() 替换为项目目录的绝对路径
+          $projectDir = (Get-Location).Path -replace '\\', '/'
+          $patched = $config -replace 'outputFileTracingRoot: process\.cwd\(\)', "outputFileTracingRoot: '$projectDir'"
+          Set-Content next.config.ts $patched
+          Write-Host "Patched next.config.ts outputFileTracingRoot to: $projectDir"
+
+      # 9. 禁用 Next.js 遥测，避免构建时网络请求
+      - name: Disable Next.js telemetry
+        run: npx next telemetry disable
+
+      # 10. 构建 Next.js + Electron，打包成 Windows NSIS 安装包
       - name: Build and package for Windows
         run: pnpm package:win
         env:
           # 跳过代码签名（没有证书时必须设置）
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          # 限制 Next.js 文件追踪范围，避免扫描系统受保护目录
+          NEXT_TELEMETRY_DISABLED: 1
 
-      # 8. 列出产物目录，方便调试
+      # 11. 列出产物目录，方便调试
       - name: List release artifacts
         shell: pwsh
         run: |
           Write-Host "=== release/ 目录内容 ==="
-          Get-ChildItem -Path release -Recurse -File | Select-Object FullName, Length | Format-Table
+          if (Test-Path release) {
+            Get-ChildItem -Path release -Recurse -File | Select-Object FullName, @{N='Size(MB)';E={[math]::Round($_.Length/1MB,2)}} | Format-Table
+          } else {
+            Write-Host "release/ 目录不存在"
+          }
 
-      # 9. 上传构建产物到 Actions Artifacts（无论是否打 tag 都会上传）
+      # 12. 上传构建产物到 Actions Artifacts（无论是否打 tag 都会上传）
       - name: Upload Windows installer as artifact
         uses: actions/upload-artifact@v4
         with:
@@ -95,7 +130,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      # 10. 如果是 tag 推送，自动创建 GitHub Release 并附上安装包
+      # 13. 如果是 tag 推送，自动创建 GitHub Release 并附上安装包
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
