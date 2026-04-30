@@ -17,27 +17,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ---------------------------------------------------------------
-      # Fix: Windows user profile contains many NTFS junction points
-      # (e.g. "Application Data", "Documents\My Music", etc.) that are
-      # legacy compatibility symlinks. When Next.js glob scans node_modules
-      # parent directories during outputFileTracing, it follows these
-      # junction points and hits EPERM errors.
-      # Solution: recursively remove ALL junction points under USERPROFILE
-      # before the build. This only removes the symlinks, not the real data.
-      # ---------------------------------------------------------------
-      - name: Remove all Windows junction points in user profile
-        shell: pwsh
-        run: |
-          Write-Host "Scanning for junction points under $env:USERPROFILE ..."
-          $junctions = Get-ChildItem -Path $env:USERPROFILE -Force -Recurse -ErrorAction SilentlyContinue |
-            Where-Object { $_.Attributes -band [System.IO.FileAttributes]::ReparsePoint }
-          foreach ($j in $junctions) {
-            Write-Host "Removing junction: $($j.FullName)"
-            cmd /c rmdir "$($j.FullName)" 2>$null
-          }
-          Write-Host "Done. Removed $($junctions.Count) junction point(s)."
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -48,15 +27,24 @@ jobs:
         with:
           version: '9'
 
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+      # ---------------------------------------------------------------
+      # Key fix: Set pnpm store inside the workspace (D:\a\...) instead
+      # of the default user profile (C:\Users\...). This prevents
+      # Next.js @vercel/nft from scanning the Windows user profile
+      # directory during outputFileTracing, which causes EPERM/EACCES
+      # errors on protected junction points and system directories.
+      # ---------------------------------------------------------------
+      - name: Configure pnpm store inside workspace
+        shell: pwsh
+        run: |
+          $storeDir = "${{ github.workspace }}\.pnpm-store"
+          pnpm config set store-dir $storeDir
+          Write-Host "pnpm store set to: $storeDir"
 
       - name: Cache pnpm dependencies
         uses: actions/cache@v4
         with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          path: ${{ github.workspace }}\.pnpm-store
           key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-
