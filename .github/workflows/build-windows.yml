@@ -1,0 +1,120 @@
+name: Build Windows
+
+on:
+  # 手动触发：在 GitHub Actions 页面点击 "Run workflow" 按钮即可
+  workflow_dispatch:
+  # 推送 tag（如 v1.0.4）时自动触发，自动创建 Release 并上传安装包
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      # 1. 拉取代码
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. 安装 Node.js 20
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 3. 安装 pnpm
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '9'
+
+      # 4. 缓存 pnpm 依赖，加速后续构建
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      # 5. 安装项目依赖
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 6. 生成 Windows 图标（从 icns 转换，或使用占位图标）
+      - name: Ensure Windows icon exists
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "build/icon.ico")) {
+            Write-Host "icon.ico not found, copying placeholder..."
+            # 用 Node.js 生成一个最小的有效 ICO 文件作为占位
+            node -e "
+              const fs = require('fs');
+              // 最小有效 ICO 文件（1x1 像素）
+              const ico = Buffer.from([
+                0,0,1,0,1,0,1,1,0,0,1,0,32,0,40,0,0,0,22,0,0,0,
+                40,0,0,0,1,0,0,0,2,0,0,0,1,0,32,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                0,0,0,255,0,0,0,0
+              ]);
+              fs.mkdirSync('build', { recursive: true });
+              fs.writeFileSync('build/icon.ico', ico);
+              console.log('Placeholder icon.ico created');
+            "
+          } else {
+            Write-Host "icon.ico already exists"
+          }
+
+      # 7. 构建 Next.js + Electron，打包成 Windows NSIS 安装包
+      - name: Build and package for Windows
+        run: pnpm package:win
+        env:
+          # 跳过代码签名（没有证书时必须设置）
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      # 8. 列出产物目录，方便调试
+      - name: List release artifacts
+        shell: pwsh
+        run: |
+          Write-Host "=== release/ 目录内容 ==="
+          Get-ChildItem -Path release -Recurse -File | Select-Object FullName, Length | Format-Table
+
+      # 9. 上传构建产物到 Actions Artifacts（无论是否打 tag 都会上传）
+      - name: Upload Windows installer as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Forge-Windows-Installer
+          path: |
+            release/*.exe
+            release/*.msi
+          if-no-files-found: warn
+          retention-days: 30
+
+      # 10. 如果是 tag 推送，自动创建 GitHub Release 并附上安装包
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Forge ${{ github.ref_name }} (Windows)"
+          body: |
+            ## Windows 安装包
+
+            下载 `.exe` 文件，双击安装即可。
+
+            **使用前请确保已安装 Claude Code CLI：**
+            ```bash
+            npm install -g @anthropic-ai/claude-code
+            claude login
+            ```
+          files: |
+            release/*.exe
+            release/*.msi
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
