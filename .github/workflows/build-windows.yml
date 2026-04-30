@@ -18,36 +18,25 @@ jobs:
         uses: actions/checkout@v4
 
       # ---------------------------------------------------------------
-      # Fix: Remove Windows NTFS junction points that cause EPERM errors
-      # when Next.js glob scans the user directory during outputFileTracing.
-      # "Application Data" and "Cookies" are legacy junction points pointing
-      # to AppData\Roaming — glob follows them and hits a permission wall.
+      # Fix: Windows user profile contains many NTFS junction points
+      # (e.g. "Application Data", "Documents\My Music", etc.) that are
+      # legacy compatibility symlinks. When Next.js glob scans node_modules
+      # parent directories during outputFileTracing, it follows these
+      # junction points and hits EPERM errors.
+      # Solution: recursively remove ALL junction points under USERPROFILE
+      # before the build. This only removes the symlinks, not the real data.
       # ---------------------------------------------------------------
-      - name: Remove problematic Windows junction points
+      - name: Remove all Windows junction points in user profile
         shell: pwsh
         run: |
-          $junctions = @(
-            "$env:USERPROFILE\Application Data",
-            "$env:USERPROFILE\Cookies",
-            "$env:USERPROFILE\Local Settings",
-            "$env:USERPROFILE\My Documents",
-            "$env:USERPROFILE\NetHood",
-            "$env:USERPROFILE\PrintHood",
-            "$env:USERPROFILE\Recent",
-            "$env:USERPROFILE\SendTo",
-            "$env:USERPROFILE\Start Menu",
-            "$env:USERPROFILE\Templates"
-          )
+          Write-Host "Scanning for junction points under $env:USERPROFILE ..."
+          $junctions = Get-ChildItem -Path $env:USERPROFILE -Force -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.Attributes -band [System.IO.FileAttributes]::ReparsePoint }
           foreach ($j in $junctions) {
-            if (Test-Path $j) {
-              $item = Get-Item $j -Force -ErrorAction SilentlyContinue
-              if ($item -and ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
-                Write-Host "Removing junction: $j"
-                cmd /c rmdir "$j" 2>$null
-              }
-            }
+            Write-Host "Removing junction: $($j.FullName)"
+            cmd /c rmdir "$($j.FullName)" 2>$null
           }
-          Write-Host "Done cleaning junction points."
+          Write-Host "Done. Removed $($junctions.Count) junction point(s)."
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
