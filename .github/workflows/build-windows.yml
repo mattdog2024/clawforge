@@ -27,24 +27,15 @@ jobs:
         with:
           version: '9'
 
-      # ---------------------------------------------------------------
-      # Key fix: Set pnpm store inside the workspace (D:\a\...) instead
-      # of the default user profile (C:\Users\...). This prevents
-      # Next.js @vercel/nft from scanning the Windows user profile
-      # directory during outputFileTracing, which causes EPERM/EACCES
-      # errors on protected junction points and system directories.
-      # ---------------------------------------------------------------
-      - name: Configure pnpm store inside workspace
-        shell: pwsh
-        run: |
-          $storeDir = "${{ github.workspace }}\.pnpm-store"
-          pnpm config set store-dir $storeDir
-          Write-Host "pnpm store set to: $storeDir"
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
 
       - name: Cache pnpm dependencies
         uses: actions/cache@v4
         with:
-          path: ${{ github.workspace }}\.pnpm-store
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-
@@ -59,6 +50,53 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # ---------------------------------------------------------------
+      # Root-cause fix: Patch Next.js's compiled glob module to silently
+      # skip EPERM/EACCES errors instead of throwing them.
+      #
+      # Background: On Windows, the user profile contains NTFS junction
+      # points (e.g. "Application Data", "Documents\My Music") and
+      # protected system directories (e.g. WindowsApps) that cannot be
+      # scanned. Next.js's outputFileTracing uses glob to scan parent
+      # directories of node_modules, which leads it into the user profile.
+      # The glob module's default behavior is to throw on any error not in
+      # its known-safe list (ENOENT, ELOOP, etc.), causing the build to fail.
+      #
+      # Fix: Add EPERM and EACCES to the silent-skip list in glob.js so
+      # that protected directories are simply skipped, not thrown.
+      # ---------------------------------------------------------------
+      - name: Patch Next.js glob to skip EPERM/EACCES on Windows
+        shell: pwsh
+        run: |
+          # Find the compiled glob.js inside the installed next package
+          $globFile = Get-ChildItem -Path node_modules -Recurse -Filter "glob.js" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -like "*next*compiled*glob*" } |
+            Select-Object -First 1 -ExpandProperty FullName
+
+          if (-not $globFile) {
+            Write-Host "glob.js not found, skipping patch"
+            exit 0
+          }
+
+          Write-Host "Patching: $globFile"
+          $content = Get-Content $globFile -Raw
+
+          # The original code only silently skips ENOENT, ELOOP, ENAMETOOLONG, UNKNOWN.
+          # We add EPERM and EACCES to the same silent-skip branch.
+          $original = 'case"ENOENT":case"ELOOP":case"ENAMETOOLONG":case"UNKNOWN":'
+          $patched  = 'case"ENOENT":case"ELOOP":case"ENAMETOOLONG":case"UNKNOWN":case"EPERM":case"EACCES":'
+
+          if ($content -like "*$patched*") {
+            Write-Host "Already patched, skipping."
+          } elseif ($content -like "*$original*") {
+            $content = $content.Replace($original, $patched)
+            Set-Content $globFile $content -NoNewline
+            Write-Host "Patch applied successfully."
+          } else {
+            Write-Host "Pattern not found in glob.js - file may have changed. Dumping context..."
+            $content | Select-String -Pattern "ENOENT" | Select-Object -First 3
+          }
 
       - name: Ensure Windows icon exists
         shell: pwsh
