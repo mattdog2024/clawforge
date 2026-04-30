@@ -17,6 +17,38 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # ---------------------------------------------------------------
+      # Fix: Remove Windows NTFS junction points that cause EPERM errors
+      # when Next.js glob scans the user directory during outputFileTracing.
+      # "Application Data" and "Cookies" are legacy junction points pointing
+      # to AppData\Roaming — glob follows them and hits a permission wall.
+      # ---------------------------------------------------------------
+      - name: Remove problematic Windows junction points
+        shell: pwsh
+        run: |
+          $junctions = @(
+            "$env:USERPROFILE\Application Data",
+            "$env:USERPROFILE\Cookies",
+            "$env:USERPROFILE\Local Settings",
+            "$env:USERPROFILE\My Documents",
+            "$env:USERPROFILE\NetHood",
+            "$env:USERPROFILE\PrintHood",
+            "$env:USERPROFILE\Recent",
+            "$env:USERPROFILE\SendTo",
+            "$env:USERPROFILE\Start Menu",
+            "$env:USERPROFILE\Templates"
+          )
+          foreach ($j in $junctions) {
+            if (Test-Path $j) {
+              $item = Get-Item $j -Force -ErrorAction SilentlyContinue
+              if ($item -and ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+                Write-Host "Removing junction: $j"
+                cmd /c rmdir "$j" 2>$null
+              }
+            }
+          }
+          Write-Host "Done cleaning junction points."
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -64,13 +96,10 @@ jobs:
           }
 
       - name: Build Next.js
-        shell: pwsh
         run: pnpm build:next
         env:
           NEXT_TELEMETRY_DISABLED: 1
           CSC_IDENTITY_AUTO_DISCOVERY: false
-          # 关键修复：通过官方环境变量把文件追踪根目录限制在项目内
-          # 避免 Next.js 在 Windows 上扫描 C:\Users\runneradmin\Application Data 等受保护目录
           NEXT_PRIVATE_OUTPUT_TRACE_ROOT: ${{ github.workspace }}
 
       - name: Build Electron
