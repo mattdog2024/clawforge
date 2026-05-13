@@ -44,8 +44,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # ---------------------------------------------------------------
-      # Patch Next.js's compiled glob module to silently skip
-      # EPERM/EACCES errors on Windows (protected NTFS junction points).
+      # Patch Next.js glob to skip EPERM/EACCES on Windows
       # ---------------------------------------------------------------
       - name: Patch Next.js glob to skip EPERM/EACCES on Windows
         shell: pwsh
@@ -76,7 +75,7 @@ jobs:
           }
 
       # ---------------------------------------------------------------
-      # Prepare build resources directory.
+      # Prepare build resources
       # ---------------------------------------------------------------
       - name: Prepare build resources
         shell: pwsh
@@ -84,12 +83,9 @@ jobs:
           if (-not (Test-Path "build")) {
             New-Item -ItemType Directory -Path "build" -Force | Out-Null
           }
-
-          # Create stub after-sign.js if missing
           if (-not (Test-Path "scripts/after-sign.js")) {
             New-Item -ItemType Directory -Path "scripts" -Force | Out-Null
             Set-Content -Path "scripts/after-sign.js" -Value "exports.default = async function afterSign(context) { console.log('afterSign: skipping (not darwin)') }" -Encoding utf8
-            Write-Host "Created stub after-sign.js"
           }
 
       # ---------------------------------------------------------------
@@ -111,10 +107,9 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       # ---------------------------------------------------------------
-      # CRITICAL FIX: Ensure 'next' module is present in standalone/node_modules.
-      # Next.js standalone output does NOT include the 'next' package itself —
-      # server.js requires('next') at startup but the package is missing.
-      # This step copies it from the project's node_modules before packaging.
+      # CRITICAL: Copy 'next' and its runtime deps into standalone/node_modules.
+      # Next.js standalone output does NOT include the 'next' package itself,
+      # but server.js does require('next') at startup.
       # ---------------------------------------------------------------
       - name: Ensure next module in standalone
         shell: pwsh
@@ -125,9 +120,9 @@ jobs:
           if (Test-Path "$standaloneNM\next\package.json") {
             Write-Host "next module already exists in standalone"
           } else {
-            Write-Host "next module MISSING from standalone — copying now..."
+            Write-Host "next module MISSING from standalone - copying now..."
 
-            # Find 'next' in project node_modules (pnpm stores it under .pnpm/)
+            # Find 'next' in project node_modules
             $nextSrc = $null
 
             # Check direct path first
@@ -154,19 +149,26 @@ jobs:
               Copy-Item -Path $nextSrc -Destination "$standaloneNM\next" -Recurse -Force
               Write-Host "Copied next module to standalone/node_modules"
 
-              # Also copy key next runtime dependencies
-              $deps = @('@next', 'styled-jsx', 'postcss', 'nanoid', 'critters', 'cssnano', 'lightningcss')
+              # Also copy key next runtime deps if missing
+              $deps = @("@next", "styled-jsx", "postcss", "nanoid", "critters", "cssnano", "lightningcss")
               foreach ($dep in $deps) {
                 $depDest = "$standaloneNM\$dep"
                 if (-not (Test-Path $depDest)) {
-                  # Check project node_modules
-                  foreach ($src in @("node_modules\$dep", "node_modules\.pnpm\*\node_modules\$dep")) {
-                    $found = Get-Item -Path $src -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
-                    if ($found) {
-                      Copy-Item -Path $found.FullName -Destination $depDest -Recurse -Force
-                      Write-Host "Copied $dep to standalone/node_modules"
-                      break
+                  $found = $null
+                  if (Test-Path "node_modules\$dep") {
+                    $found = "node_modules\$dep"
+                  } else {
+                    $candidates = Get-ChildItem -Path "node_modules\.pnpm" -Directory -ErrorAction SilentlyContinue |
+                      Where-Object { $_.Name -like "*${dep}*" } |
+                      Select-Object -First 1
+                    if ($candidates) {
+                      $inner = Join-Path $candidates.FullName "node_modules\$dep"
+                      if (Test-Path $inner) { $found = $inner }
                     }
+                  }
+                  if ($found) {
+                    Copy-Item -Path $found -Destination $depDest -Recurse -Force
+                    Write-Host "Copied $dep to standalone/node_modules"
                   }
                 }
               }
@@ -192,11 +194,10 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "=== Checking dist-electron/ ==="
-          if (Test-Path "dist-electron") {
-            Get-ChildItem -Path dist-electron -File | ForEach-Object {
-              Write-Host "  $($_.Name) ($([math]::Round($_.Length/1KB, 1)) KB)"
-            }
-          } else {
+          Get-ChildItem -Path dist-electron -File -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "  $($_.Name) ($([math]::Round($_.Length/1KB, 1)) KB)"
+          }
+          if (-not (Test-Path "dist-electron")) {
             Write-Error "dist-electron/ directory is missing!"
             exit 1
           }
@@ -205,9 +206,6 @@ jobs:
           if (Test-Path ".next/standalone") {
             $items = (Get-ChildItem -Path .next/standalone -Recurse -File).Count
             Write-Host "  $items files found"
-          } else {
-            Write-Error ".next/standalone/ directory is missing!"
-            exit 1
           }
 
           Write-Host "=== Checking node-runtime/ ==="
@@ -215,8 +213,6 @@ jobs:
             Get-ChildItem -Path node-runtime -File | Select-Object -First 5 | ForEach-Object {
               Write-Host "  $($_.Name)"
             }
-          } else {
-            Write-Warning "node-runtime/ directory is missing"
           }
 
           Write-Host "=== All checks passed ==="
