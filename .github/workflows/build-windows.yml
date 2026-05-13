@@ -77,7 +77,6 @@ jobs:
 
       # ---------------------------------------------------------------
       # Prepare build resources directory.
-      # electron-builder.json references build/ for buildResources.
       # ---------------------------------------------------------------
       - name: Prepare build resources
         shell: pwsh
@@ -86,7 +85,7 @@ jobs:
             New-Item -ItemType Directory -Path "build" -Force | Out-Null
           }
 
-          # Create stub after-sign.js if missing (script already in repo, just in case)
+          # Create stub after-sign.js if missing
           if (-not (Test-Path "scripts/after-sign.js")) {
             New-Item -ItemType Directory -Path "scripts" -Force | Out-Null
             Set-Content -Path "scripts/after-sign.js" -Value "exports.default = async function afterSign(context) { console.log('afterSign: skipping (not darwin)') }" -Encoding utf8
@@ -112,7 +111,82 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       # ---------------------------------------------------------------
-      # Debug: verify the build artifacts exist before packaging
+      # CRITICAL FIX: Ensure 'next' module is present in standalone/node_modules.
+      # Next.js standalone output does NOT include the 'next' package itself —
+      # server.js requires('next') at startup but the package is missing.
+      # This step copies it from the project's node_modules before packaging.
+      # ---------------------------------------------------------------
+      - name: Ensure next module in standalone
+        shell: pwsh
+        run: |
+          $standaloneNM = ".next\standalone\node_modules"
+
+          # Check if 'next' already exists
+          if (Test-Path "$standaloneNM\next\package.json") {
+            Write-Host "next module already exists in standalone"
+          } else {
+            Write-Host "next module MISSING from standalone — copying now..."
+
+            # Find 'next' in project node_modules (pnpm stores it under .pnpm/)
+            $nextSrc = $null
+
+            # Check direct path first
+            if (Test-Path "node_modules\next\package.json") {
+              $nextSrc = "node_modules\next"
+            }
+
+            # Check pnpm store
+            if (-not $nextSrc) {
+              $pnpmNext = Get-ChildItem -Path "node_modules\.pnpm" -Directory -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -like "next@*" -or $_.Name -like "next-*" } |
+                Select-Object -First 1
+              if ($pnpmNext) {
+                $inner = Join-Path $pnpmNext.FullName "node_modules\next"
+                if (Test-Path $inner) {
+                  $nextSrc = $inner
+                }
+              }
+            }
+
+            if ($nextSrc) {
+              Write-Host "Found next at: $nextSrc"
+              New-Item -ItemType Directory -Path "$standaloneNM\next" -Force | Out-Null
+              Copy-Item -Path $nextSrc -Destination "$standaloneNM\next" -Recurse -Force
+              Write-Host "Copied next module to standalone/node_modules"
+
+              # Also copy key next runtime dependencies
+              $deps = @('@next', 'styled-jsx', 'postcss', 'nanoid', 'critters', 'cssnano', 'lightningcss')
+              foreach ($dep in $deps) {
+                $depDest = "$standaloneNM\$dep"
+                if (-not (Test-Path $depDest)) {
+                  # Check project node_modules
+                  foreach ($src in @("node_modules\$dep", "node_modules\.pnpm\*\node_modules\$dep")) {
+                    $found = Get-Item -Path $src -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+                    if ($found) {
+                      Copy-Item -Path $found.FullName -Destination $depDest -Recurse -Force
+                      Write-Host "Copied $dep to standalone/node_modules"
+                      break
+                    }
+                  }
+                }
+              }
+            } else {
+              Write-Error "Could not find 'next' package in node_modules!"
+              exit 1
+            }
+          }
+
+          # Final verification
+          Write-Host ""
+          Write-Host "=== Standalone node_modules check ==="
+          Get-ChildItem -Path $standaloneNM -Directory | Select-Object -First 20 | ForEach-Object {
+            Write-Host "  $($_.Name)/"
+          }
+          $totalDeps = (Get-ChildItem -Path $standaloneNM -Directory).Count
+          Write-Host "Total packages in standalone/node_modules: $totalDeps"
+
+      # ---------------------------------------------------------------
+      # Verify build artifacts
       # ---------------------------------------------------------------
       - name: Verify build artifacts
         shell: pwsh
@@ -142,16 +216,7 @@ jobs:
               Write-Host "  $($_.Name)"
             }
           } else {
-            Write-Warning "node-runtime/ directory is missing (server will use system Node.js)"
-          }
-
-          Write-Host "=== Checking templates/ ==="
-          if (Test-Path "templates") {
-            Get-ChildItem -Path templates -Directory | ForEach-Object {
-              Write-Host "  $($_.Name)/"
-            }
-          } else {
-            Write-Warning "templates/ directory is missing"
+            Write-Warning "node-runtime/ directory is missing"
           }
 
           Write-Host "=== All checks passed ==="
