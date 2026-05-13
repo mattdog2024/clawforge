@@ -86,12 +86,6 @@ jobs:
             New-Item -ItemType Directory -Path "build" -Force | Out-Null
           }
 
-          # Generate icon.ico if missing (minimal valid ICO file)
-          if (-not (Test-Path "build/icon.ico")) {
-            node -e "const fs = require('fs'); const ico = Buffer.from([0,0,1,0,1,0,1,1,0,0,1,0,32,0,40,0,0,0,22,0,0,0,40,0,0,0,1,0,0,0,2,0,0,0,1,0,32,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,255,0,0,0,0]); fs.writeFileSync('build/icon.ico', ico);"
-            Write-Host "Created placeholder icon.ico"
-          }
-
           # Create stub after-sign.js if missing (script already in repo, just in case)
           if (-not (Test-Path "scripts/after-sign.js")) {
             New-Item -ItemType Directory -Path "scripts" -Force | Out-Null
