@@ -110,8 +110,6 @@ jobs:
       # CRITICAL: Prepare standalone directory for packaging.
       # Copy .next/standalone to packaged-standalone/ and ensure
       # 'next' and all required modules are present.
-      # This bypasses electron-builder's extraResources which was
-      # causing node_modules to be excluded.
       # ---------------------------------------------------------------
       - name: Prepare packaged standalone
         shell: pwsh
@@ -119,102 +117,105 @@ jobs:
           $src = ".next\standalone"
           $dst = "packaged-standalone"
 
-          # Remove old packaged-standalone if exists
           if (Test-Path $dst) {
             Remove-Item -Path $dst -Recurse -Force
           }
 
-          # Copy entire standalone directory
           Write-Host "Copying standalone to packaged-standalone..."
           Copy-Item -Path $src -Destination $dst -Recurse -Force
           Write-Host "Copy complete."
 
-          # Ensure 'next' module is present
-          $dstNM = "$dst\node_modules"
-          if (Test-Path "$dstNM\next\package.json") {
-            Write-Host "next module already present."
+          # Check if 'next' module exists after copy
+          $nextPkg = "packaged-standalone\node_modules\next\package.json"
+          if (Test-Path $nextPkg) {
+            Write-Host "next module already present in standalone."
           } else {
             Write-Host "next module MISSING - copying from project node_modules..."
-            $nextSrc = $null
-            if (Test-Path "node_modules\next\package.json") {
-              $nextSrc = "node_modules\next"
-            }
-            if (-not $nextSrc) {
+
+            # Try direct path
+            $nextSrc = "node_modules\next"
+            if (-not (Test-Path "$nextSrc\package.json")) {
+              $nextSrc = $null
+              # Try pnpm store
               $pnpmEntry = Get-ChildItem -Path "node_modules\.pnpm" -Directory -ErrorAction SilentlyContinue |
                 Where-Object { $_.Name -like "next@*" } | Select-Object -First 1
               if ($pnpmEntry) {
-                $inner = Join-Path $pnpmEntry.FullName "node_modules\next"
-                if (Test-Path $inner) { $nextSrc = $inner }
-              }
-            }
-            if ($nextSrc) {
-              New-Item -ItemType Directory -Path "$dstNM\next" -Force | Out-Null
-              Copy-Item -Path $nextSrc -Destination "$dstNM\next" -Recurse -Force
-              Write-Host "Copied next module."
-
-              # Copy key next runtime deps
-              $deps = @("@next", "styled-jsx", "postcss", "nanoid", "critters", "cssnano", "lightningcss")
-              foreach ($dep in $deps) {
-                $depDest = "$dstNM\$dep"
-                if (-not (Test-Path $depDest)) {
-                  $found = $null
-                  if (Test-Path "node_modules\$dep") {
-                    $found = "node_modules\$dep"
-                  } else {
-                    $candidates = Get-ChildItem -Path "node_modules\.pnpm" -Directory -ErrorAction SilentlyContinue |
-                      Where-Object { $_.Name -like "*${dep}*" } | Select-Object -First 1
-                    if ($candidates) {
-                      $inner = Join-Path $candidates.FullName "node_modules\$dep"
-                      if (Test-Path $inner) { $found = $inner }
-                    }
-                  }
-                  if ($found) {
-                    Copy-Item -Path $found -Destination $depDest -Recurse -Force
-                    Write-Host "Copied $dep"
-                  }
+                $candidate = Join-Path $pnpmEntry.FullName "node_modules\next"
+                if (Test-Path "$candidate\package.json") {
+                  $nextSrc = $candidate
                 }
               }
+            }
+
+            if ($nextSrc -and (Test-Path "$nextSrc\package.json")) {
+              Write-Host "Found next at: $nextSrc"
+              New-Item -ItemType Directory -Path "packaged-standalone\node_modules\next" -Force | Out-Null
+              Copy-Item -Path "$nextSrc\*" -Destination "packaged-standalone\node_modules\next" -Recurse -Force
+              Write-Host "Copied next module."
             } else {
-              Write-Error "Cannot find 'next' package!"
+              Write-Error "Cannot find next package in node_modules!"
               exit 1
+            }
+
+            # Copy key next runtime deps
+            $deps = @("@next", "styled-jsx", "postcss", "nanoid", "critters", "cssnano", "lightningcss")
+            foreach ($dep in $deps) {
+              $depDest = "packaged-standalone\node_modules\$dep"
+              if (-not (Test-Path "$depDest\package.json")) {
+                $found = $null
+                if (Test-Path "node_modules\$dep\package.json") {
+                  $found = "node_modules\$dep"
+                } else {
+                  $candidates = Get-ChildItem -Path "node_modules\.pnpm" -Directory -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -like "*${dep}*" } | Select-Object -First 1
+                  if ($candidates) {
+                    $inner = Join-Path $candidates.FullName "node_modules\$dep"
+                    if (Test-Path "$inner\package.json") { $found = $inner }
+                  }
+                }
+                if ($found) {
+                  New-Item -ItemType Directory -Path $depDest -Force | Out-Null
+                  Copy-Item -Path "$found\*" -Destination $depDest -Recurse -Force
+                  Write-Host "Copied $dep"
+                }
+              }
             }
           }
 
-          # Verify
+          # Final verification with hardcoded paths
           Write-Host ""
-          Write-Host "=== packaged-standalone/node_modules contents ==="
-          $nmCount = (Get-ChildItem -Path $dstNM -Directory -ErrorAction SilentlyContinue).Count
+          Write-Host "=== Final verification ==="
+          $nmDir = "packaged-standalone\node_modules"
+          $nmCount = (Get-ChildItem -Path $nmDir -Directory -ErrorAction SilentlyContinue).Count
           Write-Host "Total packages: $nmCount"
-          if (Test-Path "$dstNM\next\package.json") {
+
+          if (Test-Path "packaged-standalone\node_modules\next\package.json") {
             Write-Host "next: OK"
           } else {
-            Write-Error "next: STILL MISSING!"
+            Write-Host "DEBUG: next directory contents:"
+            Get-ChildItem -Path "packaged-standalone\node_modules\next" -ErrorAction SilentlyContinue | Select-Object -First 10 | ForEach-Object { Write-Host "  $($_.Name)" }
+            Write-Error "next module verification FAILED!"
             exit 1
           }
 
-          # Also verify server.js exists
-          if (Test-Path "$dst\server.js") {
+          if (Test-Path "packaged-standalone\server.js") {
             Write-Host "server.js: OK"
           } else {
-            Write-Error "server.js: MISSING!"
+            Write-Error "server.js MISSING!"
             exit 1
           }
 
+          Write-Host "=== All checks passed ==="
+
       # ---------------------------------------------------------------
-      # Verify build artifacts
+      # Verify all build artifacts
       # ---------------------------------------------------------------
       - name: Verify build artifacts
         shell: pwsh
         run: |
-          Write-Host "=== dist-electron/ ==="
-          Get-ChildItem -Path dist-electron -File -ErrorAction SilentlyContinue | ForEach-Object {
-            Write-Host "  $($_.Name)"
-          }
-          Write-Host "=== packaged-standalone/ ==="
-          Write-Host "  server.js: $(Test-Path 'packaged-standalone\server.js')"
-          Write-Host "  next module: $(Test-Path 'packaged-standalone\node_modules\next\package.json')"
-          Write-Host "  node-runtime: $(Test-Path 'node-runtime\node.exe')"
-          Write-Host "=== All checks passed ==="
+          Write-Host "dist-electron: $(Test-Path 'dist-electron')"
+          Write-Host "packaged-standalone: $(Test-Path 'packaged-standalone')"
+          Write-Host "node-runtime: $(Test-Path 'node-runtime')"
 
       # ---------------------------------------------------------------
       # Package Windows installer
