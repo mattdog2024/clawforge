@@ -40,36 +40,16 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pnpm-
 
-      - name: Cache Next.js build
-        uses: actions/cache@v4
-        with:
-          path: .next/cache
-          key: ${{ runner.os }}-nextjs-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ hashFiles('src/**/*.ts', 'src/**/*.tsx') }}
-          restore-keys: |
-            ${{ runner.os }}-nextjs-
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       # ---------------------------------------------------------------
-      # Root-cause fix: Patch Next.js's compiled glob module to silently
-      # skip EPERM/EACCES errors instead of throwing them.
-      #
-      # Background: On Windows, the user profile contains NTFS junction
-      # points (e.g. "Application Data", "Documents\My Music") and
-      # protected system directories (e.g. WindowsApps) that cannot be
-      # scanned. Next.js's outputFileTracing uses glob to scan parent
-      # directories of node_modules, which leads it into the user profile.
-      # The glob module's default behavior is to throw on any error not in
-      # its known-safe list (ENOENT, ELOOP, etc.), causing the build to fail.
-      #
-      # Fix: Add EPERM and EACCES to the silent-skip list in glob.js so
-      # that protected directories are simply skipped, not thrown.
+      # Patch Next.js's compiled glob module to silently skip
+      # EPERM/EACCES errors on Windows (protected NTFS junction points).
       # ---------------------------------------------------------------
       - name: Patch Next.js glob to skip EPERM/EACCES on Windows
         shell: pwsh
         run: |
-          # Find the compiled glob.js inside the installed next package
           $globFile = Get-ChildItem -Path node_modules -Recurse -Filter "glob.js" -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -like "*next*compiled*glob*" } |
             Select-Object -First 1 -ExpandProperty FullName
@@ -82,8 +62,6 @@ jobs:
           Write-Host "Patching: $globFile"
           $content = Get-Content $globFile -Raw
 
-          # The original code only silently skips ENOENT, ELOOP, ENAMETOOLONG, UNKNOWN.
-          # We add EPERM and EACCES to the same silent-skip branch.
           $original = 'case"ENOENT":case"ELOOP":case"ENAMETOOLONG":case"UNKNOWN":'
           $patched  = 'case"ENOENT":case"ELOOP":case"ENAMETOOLONG":case"UNKNOWN":case"EPERM":case"EACCES":'
 
@@ -94,22 +72,48 @@ jobs:
             Set-Content $globFile $content -NoNewline
             Write-Host "Patch applied successfully."
           } else {
-            Write-Host "Pattern not found in glob.js - file may have changed. Dumping context..."
-            $content | Select-String -Pattern "ENOENT" | Select-Object -First 3
+            Write-Host "Pattern not found in glob.js - file may have changed."
           }
 
-      - name: Ensure Windows icon exists
+      # ---------------------------------------------------------------
+      # Prepare build resources directory.
+      # electron-builder.json references build/ for buildResources.
+      # On macOS, it contains icon.icns and entitlements.
+      # On Windows, it only needs icon.ico (which we generate).
+      # The afterSign.js script safely skips signing on non-darwin platforms.
+      # ---------------------------------------------------------------
+      - name: Prepare build resources
         shell: pwsh
         run: |
-          if (-not (Test-Path "build/icon.ico")) {
-            node -e "
-              const fs = require('fs');
-              const ico = Buffer.from([0,0,1,0,1,0,1,1,0,0,1,0,32,0,40,0,0,0,22,0,0,0,40,0,0,0,1,0,0,0,2,0,0,0,1,0,32,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,255,0,0,0,0]);
-              fs.mkdirSync('build', { recursive: true });
-              fs.writeFileSync('build/icon.ico', ico);
-            "
+          if (-not (Test-Path "build")) {
+            New-Item -ItemType Directory -Path "build" -Force | Out-Null
           }
 
+          # Generate icon.ico if missing (minimal valid ICO file)
+          if (-not (Test-Path "build/icon.ico")) {
+            node -e @"
+              const fs = require('fs');
+              const ico = Buffer.from([0,0,1,0,1,0,1,1,0,0,1,0,32,0,40,0,0,0,22,0,0,0,40,0,0,0,1,0,0,0,2,0,0,0,1,0,32,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,255,0,0,0,0]);
+              fs.writeFileSync('build/icon.ico', ico);
+            "@
+            Write-Host "Created placeholder icon.ico"
+          }
+
+          # Create empty afterSign.js stub if the real one doesn't exist
+          # (electron-builder requires afterSign hook to exist if configured)
+          if (-not (Test-Path "scripts/after-sign.js")) {
+            New-Item -ItemType Directory -Path "scripts" -Force | Out-Null
+            @"
+            exports.default = async function afterSign(context) {
+              console.log('afterSign: skipping (not darwin)')
+            }
+            "@ | Out-File -FilePath "scripts/after-sign.js" -Encoding utf8
+            Write-Host "Created stub after-sign.js"
+          }
+
+      # ---------------------------------------------------------------
+      # Build Next.js standalone output
+      # ---------------------------------------------------------------
       - name: Build Next.js
         run: pnpm build:next
         env:
@@ -117,16 +121,71 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           NEXT_PRIVATE_OUTPUT_TRACE_ROOT: ${{ github.workspace }}
 
+      # ---------------------------------------------------------------
+      # Build Electron main + preload, bundle Node.js runtime, etc.
+      # ---------------------------------------------------------------
       - name: Build Electron
         run: pnpm build:electron
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
+      # ---------------------------------------------------------------
+      # Debug: verify the build artifacts exist before packaging
+      # ---------------------------------------------------------------
+      - name: Verify build artifacts
+        shell: pwsh
+        run: |
+          Write-Host "=== Checking dist-electron/ ==="
+          if (Test-Path "dist-electron") {
+            Get-ChildItem -Path dist-electron -File | ForEach-Object {
+              Write-Host "  $($_.Name) ($([math]::Round($_.Length/1KB, 1)) KB)"
+            }
+          } else {
+            Write-Error "dist-electron/ directory is missing!"
+            exit 1
+          }
+
+          Write-Host "=== Checking .next/standalone/ ==="
+          if (Test-Path ".next/standalone") {
+            $items = (Get-ChildItem -Path .next/standalone -Recurse -File).Count
+            Write-Host "  $items files found"
+          } else {
+            Write-Error ".next/standalone/ directory is missing!"
+            exit 1
+          }
+
+          Write-Host "=== Checking node-runtime/ ==="
+          if (Test-Path "node-runtime") {
+            Get-ChildItem -Path node-runtime -File | Select-Object -First 5 | ForEach-Object {
+              Write-Host "  $($_.Name)"
+            }
+          } else {
+            Write-Warning "node-runtime/ directory is missing (server will use system Node.js)"
+          }
+
+          Write-Host "=== Checking templates/ ==="
+          if (Test-Path "templates") {
+            Get-ChildItem -Path templates -Directory | ForEach-Object {
+              Write-Host "  $($_.Name)/"
+            }
+          } else {
+            Write-Warning "templates/ directory is missing"
+          }
+
+          Write-Host "=== All checks passed ==="
+
+      # ---------------------------------------------------------------
+      # Package Windows installer with NSIS
+      # ---------------------------------------------------------------
       - name: Package Windows installer
-        run: pnpm exec electron-builder --win
+        run: pnpm exec electron-builder --win --x64
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # ---------------------------------------------------------------
+      # List and upload artifacts
+      # ---------------------------------------------------------------
       - name: List release artifacts
         shell: pwsh
         run: |
