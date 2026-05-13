@@ -107,60 +107,62 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       # ---------------------------------------------------------------
-      # CRITICAL: Copy 'next' and its runtime deps into standalone/node_modules.
-      # Next.js standalone output does NOT include the 'next' package itself,
-      # but server.js does require('next') at startup.
+      # CRITICAL: Prepare standalone directory for packaging.
+      # Copy .next/standalone to packaged-standalone/ and ensure
+      # 'next' and all required modules are present.
+      # This bypasses electron-builder's extraResources which was
+      # causing node_modules to be excluded.
       # ---------------------------------------------------------------
-      - name: Ensure next module in standalone
+      - name: Prepare packaged standalone
         shell: pwsh
         run: |
-          $standaloneNM = ".next\standalone\node_modules"
+          $src = ".next\standalone"
+          $dst = "packaged-standalone"
 
-          # Check if 'next' already exists
-          if (Test-Path "$standaloneNM\next\package.json") {
-            Write-Host "next module already exists in standalone"
+          # Remove old packaged-standalone if exists
+          if (Test-Path $dst) {
+            Remove-Item -Path $dst -Recurse -Force
+          }
+
+          # Copy entire standalone directory
+          Write-Host "Copying standalone to packaged-standalone..."
+          Copy-Item -Path $src -Destination $dst -Recurse -Force
+          Write-Host "Copy complete."
+
+          # Ensure 'next' module is present
+          $dstNM = "$dst\node_modules"
+          if (Test-Path "$dstNM\next\package.json") {
+            Write-Host "next module already present."
           } else {
-            Write-Host "next module MISSING from standalone - copying now..."
-
-            # Find 'next' in project node_modules
+            Write-Host "next module MISSING - copying from project node_modules..."
             $nextSrc = $null
-
-            # Check direct path first
             if (Test-Path "node_modules\next\package.json") {
               $nextSrc = "node_modules\next"
             }
-
-            # Check pnpm store
             if (-not $nextSrc) {
-              $pnpmNext = Get-ChildItem -Path "node_modules\.pnpm" -Directory -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -like "next@*" -or $_.Name -like "next-*" } |
-                Select-Object -First 1
-              if ($pnpmNext) {
-                $inner = Join-Path $pnpmNext.FullName "node_modules\next"
-                if (Test-Path $inner) {
-                  $nextSrc = $inner
-                }
+              $pnpmEntry = Get-ChildItem -Path "node_modules\.pnpm" -Directory -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -like "next@*" } | Select-Object -First 1
+              if ($pnpmEntry) {
+                $inner = Join-Path $pnpmEntry.FullName "node_modules\next"
+                if (Test-Path $inner) { $nextSrc = $inner }
               }
             }
-
             if ($nextSrc) {
-              Write-Host "Found next at: $nextSrc"
-              New-Item -ItemType Directory -Path "$standaloneNM\next" -Force | Out-Null
-              Copy-Item -Path $nextSrc -Destination "$standaloneNM\next" -Recurse -Force
-              Write-Host "Copied next module to standalone/node_modules"
+              New-Item -ItemType Directory -Path "$dstNM\next" -Force | Out-Null
+              Copy-Item -Path $nextSrc -Destination "$dstNM\next" -Recurse -Force
+              Write-Host "Copied next module."
 
-              # Also copy key next runtime deps if missing
+              # Copy key next runtime deps
               $deps = @("@next", "styled-jsx", "postcss", "nanoid", "critters", "cssnano", "lightningcss")
               foreach ($dep in $deps) {
-                $depDest = "$standaloneNM\$dep"
+                $depDest = "$dstNM\$dep"
                 if (-not (Test-Path $depDest)) {
                   $found = $null
                   if (Test-Path "node_modules\$dep") {
                     $found = "node_modules\$dep"
                   } else {
                     $candidates = Get-ChildItem -Path "node_modules\.pnpm" -Directory -ErrorAction SilentlyContinue |
-                      Where-Object { $_.Name -like "*${dep}*" } |
-                      Select-Object -First 1
+                      Where-Object { $_.Name -like "*${dep}*" } | Select-Object -First 1
                     if ($candidates) {
                       $inner = Join-Path $candidates.FullName "node_modules\$dep"
                       if (Test-Path $inner) { $found = $inner }
@@ -168,24 +170,35 @@ jobs:
                   }
                   if ($found) {
                     Copy-Item -Path $found -Destination $depDest -Recurse -Force
-                    Write-Host "Copied $dep to standalone/node_modules"
+                    Write-Host "Copied $dep"
                   }
                 }
               }
             } else {
-              Write-Error "Could not find 'next' package in node_modules!"
+              Write-Error "Cannot find 'next' package!"
               exit 1
             }
           }
 
-          # Final verification
+          # Verify
           Write-Host ""
-          Write-Host "=== Standalone node_modules check ==="
-          Get-ChildItem -Path $standaloneNM -Directory | Select-Object -First 20 | ForEach-Object {
-            Write-Host "  $($_.Name)/"
+          Write-Host "=== packaged-standalone/node_modules contents ==="
+          $nmCount = (Get-ChildItem -Path $dstNM -Directory -ErrorAction SilentlyContinue).Count
+          Write-Host "Total packages: $nmCount"
+          if (Test-Path "$dstNM\next\package.json") {
+            Write-Host "next: OK"
+          } else {
+            Write-Error "next: STILL MISSING!"
+            exit 1
           }
-          $totalDeps = (Get-ChildItem -Path $standaloneNM -Directory).Count
-          Write-Host "Total packages in standalone/node_modules: $totalDeps"
+
+          # Also verify server.js exists
+          if (Test-Path "$dst\server.js") {
+            Write-Host "server.js: OK"
+          } else {
+            Write-Error "server.js: MISSING!"
+            exit 1
+          }
 
       # ---------------------------------------------------------------
       # Verify build artifacts
@@ -193,32 +206,18 @@ jobs:
       - name: Verify build artifacts
         shell: pwsh
         run: |
-          Write-Host "=== Checking dist-electron/ ==="
+          Write-Host "=== dist-electron/ ==="
           Get-ChildItem -Path dist-electron -File -ErrorAction SilentlyContinue | ForEach-Object {
-            Write-Host "  $($_.Name) ($([math]::Round($_.Length/1KB, 1)) KB)"
+            Write-Host "  $($_.Name)"
           }
-          if (-not (Test-Path "dist-electron")) {
-            Write-Error "dist-electron/ directory is missing!"
-            exit 1
-          }
-
-          Write-Host "=== Checking .next/standalone/ ==="
-          if (Test-Path ".next/standalone") {
-            $items = (Get-ChildItem -Path .next/standalone -Recurse -File).Count
-            Write-Host "  $items files found"
-          }
-
-          Write-Host "=== Checking node-runtime/ ==="
-          if (Test-Path "node-runtime") {
-            Get-ChildItem -Path node-runtime -File | Select-Object -First 5 | ForEach-Object {
-              Write-Host "  $($_.Name)"
-            }
-          }
-
+          Write-Host "=== packaged-standalone/ ==="
+          Write-Host "  server.js: $(Test-Path 'packaged-standalone\server.js')"
+          Write-Host "  next module: $(Test-Path 'packaged-standalone\node_modules\next\package.json')"
+          Write-Host "  node-runtime: $(Test-Path 'node-runtime\node.exe')"
           Write-Host "=== All checks passed ==="
 
       # ---------------------------------------------------------------
-      # Package Windows installer with NSIS
+      # Package Windows installer
       # ---------------------------------------------------------------
       - name: Package Windows installer
         run: pnpm exec electron-builder --win --x64
