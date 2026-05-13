@@ -71,7 +71,7 @@ function getFreePort(): Promise<number> {
 }
 
 // Wait for server to be ready
-function waitForServer(url: string, timeoutMs = 30000): Promise<void> {
+function waitForServer(url: string, timeoutMs = 60000): Promise<void> {
   const start = Date.now()
   return new Promise((resolve, reject) => {
     const check = () => {
@@ -135,6 +135,9 @@ async function startServer(): Promise<number> {
   // This avoids needing to rebuild native modules (better-sqlite3) for Electron's ABI
   const nodeBin = findNodeBinary()
   console.log(`[server] Using Node.js: ${nodeBin}`)
+  console.log(`[server] Server script: ${serverScript}`)
+  console.log(`[server] Working directory: ${cwd}`)
+  console.log(`[server] Platform: ${process.platform} ${process.arch}`)
 
   // GUI apps may not inherit shell PATH. Extend PATH with common
   // tool installation locations so the SDK can find `claude` CLI and other binaries.
@@ -171,12 +174,17 @@ async function startServer(): Promise<number> {
     stdio: ['ignore', 'pipe', 'pipe'],
   })
 
+  // Collect stderr output for error diagnosis
+  let stderrBuffer = ''
+
   serverProcess.stdout?.on('data', (data: Buffer) => {
     try { console.log(`[server] ${data.toString().trim()}`) } catch { /* EPIPE safe */ }
   })
 
   serverProcess.stderr?.on('data', (data: Buffer) => {
-    try { console.error(`[server] ${data.toString().trim()}`) } catch { /* EPIPE safe */ }
+    const text = data.toString()
+    stderrBuffer += text
+    try { console.error(`[server] ${text.trim()}`) } catch { /* EPIPE safe */ }
   })
 
   // Prevent EPIPE crashes when child process exits while pipes are still open
@@ -188,7 +196,41 @@ async function startServer(): Promise<number> {
     serverProcess = null
   })
 
-  await waitForServer(`http://127.0.0.1:${port}`)
+  try {
+    await waitForServer(`http://127.0.0.1:${port}`)
+  } catch (err) {
+    // Server failed to start — provide detailed error info
+    const msg = err instanceof Error ? err.message : String(err)
+    let details = msg
+
+    if (stderrBuffer) {
+      details += `\n\nServer stderr output:\n${stderrBuffer}`
+    }
+
+    // Check if the process has exited
+    if (!serverProcess || serverProcess.exitCode !== null) {
+      details += `\n\nServer process exited with code ${serverProcess?.exitCode}.`
+    }
+
+    // Check common issues
+    if (stderrBuffer.includes('better-sqlite3') || stderrBuffer.includes('.node')) {
+      details += '\n\nPossible cause: better-sqlite3 native module failed to load. This can happen if the module was built for a different Node.js version or platform.'
+    }
+
+    if (stderrBuffer.includes('/usr/bin/which')) {
+      details += '\n\nPossible cause: macOS-only path "/usr/bin/which" used on Windows.'
+    }
+
+    if (stderrBuffer.includes('MODULE_NOT_FOUND')) {
+      const match = stderrBuffer.match(/Cannot find module '([^']+)'/)
+      if (match) {
+        details += `\n\nMissing module: ${match[1]}`
+      }
+    }
+
+    throw new Error(details)
+  }
+
   return port
 }
 
