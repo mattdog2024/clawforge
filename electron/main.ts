@@ -3,7 +3,7 @@ import path from 'node:path'
 import os from 'node:os'
 import { createServer } from 'node:net'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { existsSync, readdirSync, statSync, watch, type FSWatcher } from 'node:fs'
+import { existsSync, readdirSync, statSync, watch, type FSWatcher, mkdirSync, cpSync } from 'node:fs'
 
 const isDev = !app.isPackaged
 
@@ -118,6 +118,68 @@ function findStandaloneAppRoot(standaloneDir: string): string {
   throw new Error(`Could not find standalone server.js under ${standaloneDir}`)
 }
 
+/**
+ * Ensure critical packages exist in standalone/node_modules.
+ * Next.js standalone output may not include `next` itself or its runtime deps.
+ * Copy them from the resources-level node_modules if needed.
+ */
+function ensureModules(standaloneDir: string, resourcesDir: string) {
+  const standaloneNM = path.join(standaloneDir, 'node_modules')
+  const resourcesNM = path.join(resourcesDir, 'node_modules')
+
+  // Check if 'next' exists in standalone
+  const nextInStandalone = path.join(standaloneNM, 'next')
+  if (!existsSync(nextInStandalone)) {
+    // Try to find 'next' at resources level or in the project's pnpm structure
+    let nextSrc = path.join(resourcesNM, 'next')
+
+    // pnpm might store it under .pnpm
+    if (!existsSync(nextSrc)) {
+      const pnpmDir = path.join(resourcesNM, '.pnpm')
+      if (existsSync(pnpmDir)) {
+        try {
+          const entries = readdirSync(pnpmDir)
+          // Find a directory starting with 'next-'
+          for (const entry of entries) {
+            if (entry.startsWith('next-')) {
+              const inner = path.join(pnpmDir, entry, 'node_modules', 'next')
+              if (existsSync(inner)) {
+                nextSrc = inner
+                break
+              }
+            }
+          }
+        } catch { /* skip */ }
+      }
+    }
+
+    if (existsSync(nextSrc)) {
+      try {
+        mkdirSync(nextInStandalone, { recursive: true })
+        cpSync(nextSrc, nextInStandalone, { recursive: true })
+        console.log(`[server] Copied 'next' from ${nextSrc} to standalone/node_modules/next`)
+
+        // Also copy key next runtime deps if missing
+        const depsToCheck = ['@next', 'styled-jsx', 'postcss', 'nanoid']
+        for (const dep of depsToCheck) {
+          const depDest = path.join(standaloneNM, dep)
+          if (!existsSync(depDest)) {
+            const depSrc = path.join(resourcesNM, dep)
+            if (existsSync(depSrc)) {
+              cpSync(depSrc, depDest, { recursive: true })
+              console.log(`[server] Copied '${dep}' to standalone/node_modules/`)
+            }
+          }
+        }
+      } catch (e: any) {
+        console.error(`[server] Failed to copy 'next': ${e.message}`)
+      }
+    } else {
+      console.error(`[server] 'next' package not found anywhere in resources`)
+    }
+  }
+}
+
 // Start Next.js standalone server in production
 async function startServer(): Promise<number> {
   const port = await getFreePort()
@@ -131,18 +193,29 @@ async function startServer(): Promise<number> {
   const cwd = findStandaloneAppRoot(standaloneDir)
   const serverScript = path.join(cwd, 'server.js')
 
-  // Use system Node.js to run the standalone server
-  // This avoids needing to rebuild native modules (better-sqlite3) for Electron's ABI
   const nodeBin = findNodeBinary()
   console.log(`[server] Using Node.js: ${nodeBin}`)
   console.log(`[server] Server script: ${serverScript}`)
   console.log(`[server] Working directory: ${cwd}`)
+  console.log(`[server] Resources directory: ${resourcesDir}`)
   console.log(`[server] Platform: ${process.platform} ${process.arch}`)
+
+  // Ensure 'next' module is available in standalone
+  ensureModules(cwd, resourcesDir)
+
+  // Build NODE_PATH to help Node resolve modules
+  const standaloneNM = path.join(cwd, 'node_modules')
+  const resourcesNM = path.join(resourcesDir, 'node_modules')
+  const nodePaths = [standaloneNM]
+  if (resourcesNM !== standaloneNM && existsSync(resourcesNM)) {
+    nodePaths.push(resourcesNM)
+  }
+  const isWin = process.platform === 'win32'
+  const nodePathStr = nodePaths.join(isWin ? ';' : ':')
 
   // GUI apps may not inherit shell PATH. Extend PATH with common
   // tool installation locations so the SDK can find `claude` CLI and other binaries.
   const home = os.homedir()
-  const isWin = process.platform === 'win32'
   const pathSep = isWin ? ';' : ':'
   const extraPaths = [
     path.join(home, '.local', 'bin'),        // Claude Code CLI default location
@@ -163,6 +236,7 @@ async function startServer(): Promise<number> {
     env: {
       ...process.env,
       PATH: extendedPath,
+      NODE_PATH: nodePathStr,
       PORT: String(port),
       HOSTNAME: '127.0.0.1',
       NODE_ENV: 'production',
@@ -214,7 +288,7 @@ async function startServer(): Promise<number> {
 
     // Check common issues
     if (stderrBuffer.includes('better-sqlite3') || stderrBuffer.includes('.node')) {
-      details += '\n\nPossible cause: better-sqlite3 native module failed to load. This can happen if the module was built for a different Node.js version or platform.'
+      details += '\n\nPossible cause: better-sqlite3 native module failed to load.'
     }
 
     if (stderrBuffer.includes('/usr/bin/which')) {
