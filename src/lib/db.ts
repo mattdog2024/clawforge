@@ -492,14 +492,17 @@ function testMcpConnection(protocol: string, config: Record<string, unknown>): s
   if (protocol === 'stdio' && config.command) {
     try {
       const mainCmd = String(config.command).split(/\s+/)[0]
-      // Check if it's an absolute path that exists, or use `which`
-      if (mainCmd.startsWith('/')) {
+      // Check if it's an absolute path that exists
+      if (mainCmd.startsWith('/') || mainCmd.match(/^[A-Za-z]:\\/)) {
         if (fs.existsSync(mainCmd)) return 'connected'
-      } else {
-        execFileSync('/usr/bin/which', [mainCmd], { timeout: 3000, encoding: 'utf-8' })
-        return 'connected'
       }
-    } catch { /* command not found */ }
+      // Cross-platform: use `where` on Windows, `which` on macOS/Linux
+      const isWin = process.platform === 'win32'
+      try {
+        execFileSync(isWin ? 'where' : '/usr/bin/which', [mainCmd], { timeout: 3000, encoding: 'utf-8' })
+        return 'connected'
+      } catch { /* command not found */ }
+    } catch { /* unexpected error */ }
     return 'error'
   }
   return 'disconnected'
