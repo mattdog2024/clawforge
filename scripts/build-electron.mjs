@@ -428,6 +428,43 @@ function ensureExternalDeps(standaloneDir) {
   if (copied > 0) console.log(`✅ Copied ${copied} missing transitive dep(s) for external packages`)
 }
 
+// Step 3d: Ensure the `next` framework package is present in standalone/node_modules.
+// Next.js standalone output does NOT include the `next` package itself in node_modules —
+// it inlines the runtime into .next/server/ but server.js still does require('next').
+// Copy it from the project's node_modules if missing.
+function ensureFrameworkInStandalone(standaloneDir) {
+  const standaloneNM = join(standaloneDir, 'node_modules')
+  const projectNM = join(process.cwd(), 'node_modules')
+  let copied = 0
+
+  // Packages that Next.js server.js requires but standalone doesn't include
+  const required = ['next']
+
+  for (const pkg of required) {
+    const dest = join(standaloneNM, pkg)
+    const src = join(projectNM, pkg)
+
+    if (!existsSync(dest) && existsSync(src)) {
+      try {
+        mkdirSync(join(dest, '..'), { recursive: true })
+        cpSync(src, dest, { recursive: true })
+        copied++
+        console.log(`  Copied ${pkg} to standalone/node_modules`)
+      } catch (e) {
+        console.log(`  Warning: could not copy ${pkg}: ${e.message}`)
+      }
+    }
+  }
+
+  // Also copy transitive deps of `next` that standalone might need
+  // (e.g., next/dist/server/require-hook.js loads these at runtime)
+  if (copied > 0) {
+    fixPnpmHoisting(standaloneDir)
+  }
+
+  if (copied > 0) console.log(`✅ Ensured ${copied} framework package(s) in standalone`)
+}
+
 // Main
 await buildElectron()
 await bundleNodeRuntime()
@@ -438,6 +475,7 @@ try {
   lstatSync(standaloneDir)
   resolveSymlinks(standaloneDir)
   fixPnpmHoisting(standaloneDir)
+  ensureFrameworkInStandalone(standaloneDir)
   ensureExternalDeps(standaloneDir)
   resolveSymlinks(standaloneDir)  // Second pass: resolve symlinks introduced by ensureExternalDeps
   cleanForgeData(standaloneDir)
