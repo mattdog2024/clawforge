@@ -96,8 +96,66 @@ jobs:
           if (Test-Path "standalone-stage") {
             Remove-Item -Path "standalone-stage" -Recurse -Force
           }
-          Copy-Item -Path ".next\standalone" -Destination "standalone-stage" -Recurse -Force
-          Write-Host "Copied standalone to standalone-stage"
+
+          # Find the actual app root inside .next\standalone (where server.js lives)
+          # Next.js may nest it under a subdirectory named after the project
+          $standaloneBase = ".next\standalone"
+          $serverJsRoot = $null
+
+          # Check direct location first
+          if (Test-Path "$standaloneBase\server.js") {
+            $serverJsRoot = $standaloneBase
+            Write-Host "server.js found directly at: $serverJsRoot"
+          } else {
+            # Search one level deep for server.js
+            $found = Get-ChildItem -Path $standaloneBase -Directory -ErrorAction SilentlyContinue |
+              Where-Object { Test-Path (Join-Path $_.FullName "server.js") } |
+              Select-Object -First 1
+            if ($found) {
+              $serverJsRoot = $found.FullName
+              Write-Host "server.js found in subdirectory: $serverJsRoot"
+            } else {
+              # Search recursively (skip node_modules and .next)
+              $found = Get-ChildItem -Path $standaloneBase -Recurse -Filter "server.js" -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -notlike "*\node_modules\*" -and $_.FullName -notlike "*\.next\*" } |
+                Select-Object -First 1
+              if ($found) {
+                $serverJsRoot = $found.DirectoryName
+                Write-Host "server.js found recursively at: $serverJsRoot"
+              }
+            }
+          }
+
+          if (-not $serverJsRoot) {
+            Write-Error "FATAL: Cannot find server.js anywhere under $standaloneBase"
+            Write-Host "Contents of $standaloneBase :"
+            Get-ChildItem -Path $standaloneBase -ErrorAction SilentlyContinue | Select-Object Name | Format-Table
+            exit 1
+          }
+
+          # Copy the app root (containing server.js) to standalone-stage
+          Write-Host "Copying from $serverJsRoot to standalone-stage ..."
+          Copy-Item -Path $serverJsRoot -Destination "standalone-stage" -Recurse -Force
+          Write-Host "Copied standalone app root to standalone-stage"
+
+          # Also copy .next/static into standalone-stage/.next/static if missing
+          $staticSrc = ".next\static"
+          $staticDest = "standalone-stage\.next\static"
+          if ((Test-Path $staticSrc) -and (-not (Test-Path $staticDest))) {
+            New-Item -ItemType Directory -Path "standalone-stage\.next" -Force | Out-Null
+            Copy-Item -Path $staticSrc -Destination $staticDest -Recurse -Force
+            Write-Host "Copied .next\static to standalone-stage\.next\static"
+          }
+
+          # Copy public/ into standalone-stage/public if missing
+          $publicSrc = "public"
+          $publicDest = "standalone-stage\public"
+          if ((Test-Path $publicSrc) -and (-not (Test-Path $publicDest))) {
+            Copy-Item -Path $publicSrc -Destination $publicDest -Recurse -Force
+            Write-Host "Copied public\ to standalone-stage\public"
+          }
+
+          # Ensure next module is present in standalone-stage\node_modules
           if (Test-Path "standalone-stage\node_modules\next\package.json") {
             Write-Host "next module already present"
           } else {
@@ -118,7 +176,7 @@ jobs:
               $deps = @("@next", "styled-jsx", "postcss", "nanoid")
               foreach ($dep in $deps) {
                 $depDest = "standalone-stage\node_modules\$dep"
-                if (-not (Test-Path "$depDest\package.json")) {
+                if (-not (Test-Path $depDest)) {
                   $depSrc = "node_modules\$dep"
                   if (-not (Test-Path "$depSrc\package.json")) {
                     $c = Get-ChildItem -Path "node_modules\.pnpm" -Directory -ErrorAction SilentlyContinue |
@@ -140,6 +198,8 @@ jobs:
               exit 1
             }
           }
+
+          # Final verification
           if (-not (Test-Path "standalone-stage\node_modules\next\package.json")) {
             Write-Error "VERIFICATION FAILED: next module not found!"
             exit 1
