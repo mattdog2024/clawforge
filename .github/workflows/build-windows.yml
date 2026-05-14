@@ -15,14 +15,15 @@ jobs:
         uses: actions/checkout@v4
 
       # ---------------------------------------------------------------
-      # Use Node.js v24 to match Electron 40.x's embedded Node.js.
-      # This ensures better-sqlite3 native module is compiled with the
-      # same NODE_MODULE_VERSION as the bundled runtime.
+      # Use Node.js v22 — matches the version better-sqlite3 has
+      # prebuilt binaries for. Node.js v24 lacks prebuilds AND
+      # node-gyp fails on windows-latest runners (VS version mismatch).
+      # The bundled runtime (build-electron.mjs) also uses v22.
       # ---------------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '22'
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -106,6 +107,9 @@ jobs:
 
       # ---------------------------------------------------------------
       # Verify Node.js version alignment
+      # CI uses v22 to compile native modules. The bundled runtime
+      # (node-runtime/node.exe) MUST match — otherwise better-sqlite3
+      # will fail to load at runtime (NODE_MODULE_VERSION mismatch).
       # ---------------------------------------------------------------
       - name: Verify Node.js version alignment
         shell: pwsh
@@ -118,22 +122,25 @@ jobs:
             $bundledVer = & $bundledNode --version
             Write-Host "Bundled Node.js version: $bundledVer"
             
-            if ($ciNodeVer -ne $bundledVer) {
+            # Compare major.minor (ignore patch)
+            $ciMajorMinor = $ciNodeVer -replace '^v(\d+\.\d+).*$', '$1'
+            $bundledMajorMinor = $bundledVer -replace '^v(\d+\.\d+).*$', '$1'
+            
+            if ($ciMajorMinor -ne $bundledMajorMinor) {
               Write-Error "VERSION MISMATCH: CI ($ciNodeVer) vs bundled ($bundledVer)!"
               Write-Error "better-sqlite3 native module will fail to load."
               exit 1
             }
-            Write-Host "Node.js versions aligned: $ciNodeVer == $bundledVer"
+            Write-Host "Node.js versions aligned: $ciMajorMinor == $bundledMajorMinor"
           } else {
             Write-Error "Bundled node.exe not found at $bundledNode"
             exit 1
           }
 
           # Verify better-sqlite3 .node file exists
-          $sqliteNode = ".next\standalone\node_modules\.pnpm\better-sqlite3@*\node_modules\better-sqlite3\build\Release\better_sqlite3.node"
-          $sqliteFound = Get-Item -Path $sqliteNode -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($sqliteFound) {
-            Write-Host "better_sqlite3.node found: $($sqliteFound.FullName)"
+          $sqliteNode = Get-Item -Path ".next\standalone\node_modules\.pnpm\better-sqlite3@*\node_modules\better-sqlite3\build\Release\better_sqlite3.node" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($sqliteNode) {
+            Write-Host "better_sqlite3.node found: $($sqliteNode.FullName)"
           } else {
             Write-Host "Warning: better_sqlite3.node not found via glob"
           }
@@ -252,7 +259,7 @@ jobs:
               Write-Host "node_modules packages: $nmCount"
             }
             
-            # Verify node-runtime
+            # Verify node-runtime version
             $nodeExe = "$resourcesDir\node-runtime\node.exe"
             if (Test-Path $nodeExe) {
               $nodeVer = & $nodeExe --version
