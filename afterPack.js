@@ -7,20 +7,30 @@ const path = require('path');
 const fs = require('fs');
 const { execSync } = require('child_process');
 
+// electron-builder Arch enum (from builder-util/src/arch.ts):
+//   ia32=0, x64=1, armv7l=2, arm64=3, universal=4
+// context.arch is a NUMBER, NOT a string — never compare with 'x64'!
+const Arch = { ia32: 0, x64: 1, armv7l: 2, arm64: 3, universal: 4 };
+
 async function afterPack(context) {
   const { appOutDir, electronPlatformName, arch } = context;
 
   console.log('[afterPack] ========================================');
   console.log('[afterPack] Hook started');
   console.log('[afterPack] appOutDir:', appOutDir);
-  console.log('[afterPack] platform:', electronPlatformName, 'arch:', arch);
+  console.log('[afterPack] platform:', electronPlatformName, 'arch:', arch, '(Arch.x64=' + Arch.x64 + ')');
   console.log('[afterPack] cwd:', process.cwd());
   console.log('[afterPack] ========================================');
 
-  if (electronPlatformName !== 'win32' || arch !== 'x64') {
-    console.log('[afterPack] Skipping non-win32/x64 target');
+  // arch is a NUMBER (Arch enum), not a string!
+  // Arch.x64 = 1, so arch === 1 means x64
+  const isWin32 = electronPlatformName === 'win32';
+  const isX64 = (arch === Arch.x64) || (arch === 1);
+  if (!isWin32 || !isX64) {
+    console.log('[afterPack] Skipping non-win32/x64 target (platform=' + electronPlatformName + ' arch=' + arch + ')');
     return;
   }
+  console.log('[afterPack] Running win32/x64 injection...');
 
   // ---------------------------------------------------------------
   // Step 1: Find and inject standalone-stage

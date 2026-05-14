@@ -47,25 +47,79 @@ function findClaudeExecutable(): string | undefined {
 
 function _findClaudeUncached(): string | undefined {
   const home = os.homedir()
+  const isWindows = process.platform === 'win32'
 
-  // 1. Check well-known fixed paths
-  const candidates = [
-    '/usr/local/bin/claude',
-    '/opt/homebrew/bin/claude',
-    path.join(home, '.npm-global', 'bin', 'claude'),
-    path.join(home, '.local', 'bin', 'claude'),
-    path.join(home, '.claude', 'bin', 'claude'),
-  ]
+  // 1. Check well-known fixed paths (platform-specific)
+  const candidates: string[] = isWindows
+    ? [
+        // Windows: npm global install (most common)
+        path.join(home, 'AppData', 'Roaming', 'npm', 'claude.cmd'),
+        path.join(home, 'AppData', 'Roaming', 'npm', 'claude'),
+        // Windows: pnpm global
+        path.join(home, 'AppData', 'Local', 'pnpm', 'claude.cmd'),
+        path.join(home, 'AppData', 'Local', 'pnpm', 'claude'),
+        // Windows: volta
+        path.join(home, '.volta', 'bin', 'claude.cmd'),
+        path.join(home, '.volta', 'bin', 'claude'),
+        // Windows: scoop
+        path.join(home, 'scoop', 'shims', 'claude.cmd'),
+        path.join(home, 'scoop', 'shims', 'claude'),
+        // Windows: yarn global
+        path.join(home, 'AppData', 'Local', 'Yarn', 'bin', 'claude.cmd'),
+        // Windows: nvm-windows
+        path.join(home, 'AppData', 'Roaming', 'nvm', 'claude.cmd'),
+        // Windows: direct cli.js via npm global node_modules
+        path.join(home, 'AppData', 'Roaming', 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'),
+        // Windows: direct cli.js via pnpm global
+        path.join(home, 'AppData', 'Local', 'pnpm', 'global', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'),
+      ]
+    : [
+        '/usr/local/bin/claude',
+        '/opt/homebrew/bin/claude',
+        path.join(home, '.npm-global', 'bin', 'claude'),
+        path.join(home, '.local', 'bin', 'claude'),
+        path.join(home, '.claude', 'bin', 'claude'),
+      ]
+
   for (const p of candidates) {
     if (fs.existsSync(p)) {
       try {
-        execFileSync(p, ['--version'], { timeout: 5000, stdio: 'pipe' })
+        if (isWindows && p.endsWith('.cmd')) {
+          // .cmd files must be invoked via cmd.exe on Windows
+          execFileSync('cmd', ['/c', p, '--version'], { timeout: 5000, stdio: 'pipe' })
+        } else {
+          execFileSync(p, ['--version'], { timeout: 5000, stdio: 'pipe' })
+        }
         return p
       } catch { /* not executable, try next */ }
     }
   }
 
-  // 2. Scan fnm node versions for globally installed claude-code
+  if (isWindows) {
+    // Windows: scan nvm-windows node versions
+    const nvmWindowsDir = path.join(home, 'AppData', 'Roaming', 'nvm')
+    try {
+      if (fs.existsSync(nvmWindowsDir)) {
+        for (const v of fs.readdirSync(nvmWindowsDir)) {
+          const cliPath = path.join(nvmWindowsDir, v, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js')
+          if (fs.existsSync(cliPath)) return cliPath
+        }
+      }
+    } catch { /* skip */ }
+
+    // Windows: try 'where claude' via cmd
+    try {
+      const result = execSync('where claude 2>nul', { timeout: 5000, stdio: 'pipe', shell: 'cmd.exe' })
+      const lines = result.toString().trim().split('\n').map(l => l.trim()).filter(Boolean)
+      for (const found of lines) {
+        if (found && fs.existsSync(found)) return found
+      }
+    } catch { /* not found */ }
+
+    return undefined
+  }
+
+  // 2. Scan fnm node versions for globally installed claude-code (Unix)
   const fnmVersionsDir = path.join(home, '.fnm', 'node-versions')
   const cliRelPath = 'installation/lib/node_modules/@anthropic-ai/claude-code/cli.js'
   try {
@@ -77,7 +131,7 @@ function _findClaudeUncached(): string | undefined {
     }
   } catch { /* skip */ }
 
-  // 3. Scan nvm node versions
+  // 3. Scan nvm node versions (Unix)
   const nvmDir = process.env.NVM_DIR || path.join(home, '.nvm')
   const nvmVersionsDir = path.join(nvmDir, 'versions', 'node')
   try {
@@ -89,7 +143,7 @@ function _findClaudeUncached(): string | undefined {
     }
   } catch { /* skip */ }
 
-  // 4. Scan volta
+  // 4. Scan volta (Unix)
   const voltaToolsDir = path.join(home, '.volta', 'tools', 'image', 'packages', '@anthropic-ai', 'claude-code')
   try {
     if (fs.existsSync(voltaToolsDir)) {
@@ -100,7 +154,7 @@ function _findClaudeUncached(): string | undefined {
     }
   } catch { /* skip */ }
 
-  // 5. Last resort: ask user's login shell (handles any custom PATH setup)
+  // 5. Last resort: ask user's login shell (Unix only)
   try {
     const shell = process.env.SHELL || '/bin/zsh'
     const result = execSync(`${shell} -ilc "which claude" 2>/dev/null`, {
@@ -120,40 +174,51 @@ function _findClaudeUncached(): string | undefined {
 
 function getExpandedPath(): string {
   const home = os.homedir()
+  const isWindows = process.platform === 'win32'
   const parts = new Set((process.env.PATH || '').split(path.delimiter).filter(Boolean))
-
   // Add common Node.js version manager bin directories
-  const extras = [
-    '/usr/local/bin',
-    '/opt/homebrew/bin',
-    path.join(home, '.local', 'bin'),
-    path.join(home, '.npm-global', 'bin'),
-  ]
-
-  // fnm: add all version bin dirs
-  const fnmVersionsDir = path.join(home, '.fnm', 'node-versions')
-  try {
-    if (fs.existsSync(fnmVersionsDir)) {
-      for (const v of fs.readdirSync(fnmVersionsDir)) {
-        extras.push(path.join(fnmVersionsDir, v, 'installation', 'bin'))
+  const extras: string[] = isWindows
+    ? [
+        // Windows: npm global
+        path.join(home, 'AppData', 'Roaming', 'npm'),
+        // Windows: pnpm global
+        path.join(home, 'AppData', 'Local', 'pnpm'),
+        // Windows: volta
+        path.join(home, '.volta', 'bin'),
+        // Windows: scoop shims
+        path.join(home, 'scoop', 'shims'),
+        // Windows: yarn global
+        path.join(home, 'AppData', 'Local', 'Yarn', 'bin'),
+      ]
+    : [
+        '/usr/local/bin',
+        '/opt/homebrew/bin',
+        path.join(home, '.local', 'bin'),
+        path.join(home, '.npm-global', 'bin'),
+      ]
+  if (!isWindows) {
+    // fnm: add all version bin dirs (Unix only)
+    const fnmVersionsDir = path.join(home, '.fnm', 'node-versions')
+    try {
+      if (fs.existsSync(fnmVersionsDir)) {
+        for (const v of fs.readdirSync(fnmVersionsDir)) {
+          extras.push(path.join(fnmVersionsDir, v, 'installation', 'bin'))
+        }
       }
-    }
-  } catch { /* skip */ }
-
-  // nvm: add all version bin dirs
-  const nvmDir = process.env.NVM_DIR || path.join(home, '.nvm')
-  const nvmVersionsDir = path.join(nvmDir, 'versions', 'node')
-  try {
-    if (fs.existsSync(nvmVersionsDir)) {
-      for (const v of fs.readdirSync(nvmVersionsDir)) {
-        extras.push(path.join(nvmVersionsDir, v, 'bin'))
+    } catch { /* skip */ }
+    // nvm: add all version bin dirs (Unix only)
+    const nvmDir = process.env.NVM_DIR || path.join(home, '.nvm')
+    const nvmVersionsDir = path.join(nvmDir, 'versions', 'node')
+    try {
+      if (fs.existsSync(nvmVersionsDir)) {
+        for (const v of fs.readdirSync(nvmVersionsDir)) {
+          extras.push(path.join(nvmVersionsDir, v, 'bin'))
+        }
       }
-    }
-  } catch { /* skip */ }
-
-  // volta
-  extras.push(path.join(home, '.volta', 'bin'))
-
+    } catch { /* skip */ }
+    // volta (Unix)
+    extras.push(path.join(home, '.volta', 'bin'))
+  }
   for (const p of extras) {
     if (p) parts.add(p)
   }
