@@ -104,16 +104,49 @@ export function getClaudeCliAccountInfo(): { email: string; displayName: string;
 
 /**
  * Resolve the API provider for a given model.
- * Looks up which provider owns the model, fetches credentials from DB,
- * and returns the correct base URL and auth type.
  *
- * For Anthropic: supports both API Key and CLI auth modes.
- * For others: requires API Key, uses Anthropic-compatible endpoint.
+ * Resolution order:
+ * 1. Custom provider (namespaced ID: custom:providerId:modelName) — checked FIRST
+ * 2. Built-in provider lookup via MODEL_TO_PROVIDER
+ * 3. Legacy custom provider lookup (raw model_name)
+ * 4. Default to Anthropic
+ *
+ * IMPORTANT: Custom providers are checked before built-in models so that a custom
+ * provider using a model name that matches a built-in (e.g. "claude-sonnet-4-6")
+ * is correctly routed to the custom provider, not Anthropic.
  */
 export function resolveProvider(model?: string): ResolvedProvider {
   const db = getDb()
 
-  // 1. Try built-in provider lookup
+  // 1. Try custom provider lookup FIRST: namespaced model ID (custom:providerId:modelName)
+  //    This must come before built-in lookup so custom providers with model names that
+  //    match built-in IDs (e.g. "claude-sonnet-4-6") are correctly routed.
+  const customModel = parseCustomModelId(model)
+  if (customModel) {
+    const customRow = db.prepare(
+      "SELECT id, name, api_key, base_url, protocol FROM api_providers WHERE provider = 'custom' AND id = ? AND model_name = ? AND api_key != ''"
+    ).get(customModel.providerId, customModel.modelName) as { id: string; name: string; api_key: string; base_url: string; protocol?: string } | undefined
+
+    if (customRow) {
+      // FIX: Anthropic-compatible custom providers need 'api_key' authType so the SDK
+      // subprocess receives ANTHROPIC_API_KEY (x-api-key header).
+      // The test connection uses direct HTTP fetch (works with Bearer), but the SDK subprocess
+      // uses the claude CLI which requires ANTHROPIC_API_KEY for Anthropic-compatible endpoints.
+      const authType: 'api_key' | 'auth_token' =
+        (customRow.protocol === 'openai-compatible') ? 'auth_token' : 'api_key'
+
+      return {
+        apiKey: customRow.api_key,
+        baseUrl: customRow.base_url || undefined,
+        provider: 'custom',
+        providerId: customRow.id,
+        isCliAuth: false,
+        authType,
+      }
+    }
+  }
+
+  // 2. Try built-in provider lookup
   const builtinProviderId = model ? MODEL_TO_PROVIDER[model] : undefined
   if (builtinProviderId) {
     const catalog = PROVIDER_CATALOG[builtinProviderId]
@@ -159,40 +192,13 @@ export function resolveProvider(model?: string): ResolvedProvider {
     throw new Error('No Anthropic credentials found. Either add an API key in Settings, or run `claude login` in your terminal to authenticate with your Claude subscription.')
   }
 
-  // 2. Try custom provider lookup: first by namespaced model ID, then legacy raw model_name.
-  const customModel = parseCustomModelId(model)
-  if (customModel) {
-    const customRow = db.prepare(
-      "SELECT id, name, api_key, base_url, protocol FROM api_providers WHERE provider = 'custom' AND id = ? AND model_name = ? AND api_key != ''"
-    ).get(customModel.providerId, customModel.modelName) as { id: string; name: string; api_key: string; base_url: string; protocol?: string } | undefined
-
-    if (customRow) {
-      // FIX: Anthropic-compatible custom providers need 'api_key' authType so the SDK
-      // subprocess receives ANTHROPIC_API_KEY (x-api-key header), not just ANTHROPIC_AUTH_TOKEN.
-      // The test connection uses direct HTTP fetch (works with Bearer), but the SDK subprocess
-      // uses the claude CLI which requires ANTHROPIC_API_KEY for Anthropic-compatible endpoints.
-      const authType: 'api_key' | 'auth_token' =
-        (customRow.protocol === 'openai-compatible') ? 'auth_token' : 'api_key'
-
-      return {
-        apiKey: customRow.api_key,
-        baseUrl: customRow.base_url || undefined,
-        provider: 'custom',
-        providerId: customRow.id,
-        isCliAuth: false,
-        authType,
-      }
-    }
-  }
-
-  // Legacy custom provider lookup: match raw model_name in api_providers where provider='custom'
+  // 3. Legacy custom provider lookup: match raw model_name in api_providers where provider='custom'
   if (model) {
     const customRow = db.prepare(
       "SELECT id, name, api_key, base_url, protocol FROM api_providers WHERE provider = 'custom' AND model_name = ? AND api_key != ''"
     ).get(model) as { id: string; name: string; api_key: string; base_url: string; protocol?: string } | undefined
 
     if (customRow) {
-      // FIX: same as above — use 'api_key' for Anthropic-compatible, 'auth_token' for OpenAI-compatible
       const authType: 'api_key' | 'auth_token' =
         (customRow.protocol === 'openai-compatible') ? 'auth_token' : 'api_key'
 
@@ -207,7 +213,7 @@ export function resolveProvider(model?: string): ResolvedProvider {
     }
   }
 
-  // 3. Default to Anthropic
+  // 4. Default to Anthropic
   const catalog = PROVIDER_CATALOG.anthropic
   const row = db.prepare("SELECT id, api_key, base_url, provider FROM api_providers WHERE id = 'anthropic'").get() as { id: string; api_key: string; base_url: string; provider: string } | undefined
   if (row?.api_key) {
