@@ -19,17 +19,39 @@ export function useTheme() {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>('dark')
+  const [theme, setThemeState] = useState<Theme>('dark')
   const [resolvedTheme, setResolvedTheme] = useState<'dark' | 'light'>('dark')
 
+  // On mount: load theme from DB (via /api/settings) first, fall back to localStorage.
+  // This fixes the issue where localStorage is cleared between Electron restarts
+  // (different port = different origin = empty localStorage).
   useEffect(() => {
-    const saved = localStorage.getItem('forge-theme')
-    if (saved === 'dark' || saved === 'light' || saved === 'system') {
-      setTheme(saved)
+    const applyTheme = (saved: string | null) => {
+      if (saved === 'dark' || saved === 'light' || saved === 'system') {
+        setThemeState(saved)
+      }
     }
+
+    // Try DB first (authoritative, survives restarts)
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then((data: Record<string, string>) => {
+        if (data.theme === 'dark' || data.theme === 'light' || data.theme === 'system') {
+          applyTheme(data.theme)
+        } else {
+          // Fall back to localStorage if DB has no theme yet
+          applyTheme(localStorage.getItem('forge-theme'))
+        }
+      })
+      .catch(() => {
+        // Network error: fall back to localStorage
+        applyTheme(localStorage.getItem('forge-theme'))
+      })
   }, [])
 
+  // Apply theme to DOM and sync to localStorage whenever theme changes
   useEffect(() => {
+    // Keep localStorage in sync as a fast-read cache
     localStorage.setItem('forge-theme', theme)
 
     if (theme === 'system') {
@@ -51,6 +73,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setResolvedTheme(resolved)
     document.documentElement.setAttribute('data-theme', resolved)
   }, [theme])
+
+  const setTheme = (t: Theme) => {
+    setThemeState(t)
+  }
 
   return (
     <ThemeContext.Provider value={{ theme, resolvedTheme, setTheme }}>
