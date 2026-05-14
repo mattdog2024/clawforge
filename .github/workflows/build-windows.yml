@@ -43,27 +43,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # ---------------------------------------------------------------
-      # Patch Next.js glob to skip EPERM/EACCES on Windows
-      # ---------------------------------------------------------------
       - name: Patch Next.js glob to skip EPERM/EACCES on Windows
         shell: pwsh
         run: |
           $globFile = Get-ChildItem -Path node_modules -Recurse -Filter "glob.js" -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -like "*next*compiled*glob*" } |
             Select-Object -First 1 -ExpandProperty FullName
-
           if (-not $globFile) {
             Write-Host "glob.js not found, skipping patch"
             exit 0
           }
-
           Write-Host "Patching: $globFile"
           $content = Get-Content $globFile -Raw
-
           $original = 'case"ENOENT":case"ELOOP":case"ENAMETOOLONG":case"UNKNOWN":'
           $patched  = 'case"ENOENT":case"ELOOP":case"ENAMETOOLONG":case"UNKNOWN":case"EPERM":case"EACCES":'
-
           if ($content -like "*$patched*") {
             Write-Host "Already patched, skipping."
           } elseif ($content -like "*$original*") {
@@ -74,9 +67,6 @@ jobs:
             Write-Host "Pattern not found in glob.js - file may have changed."
           }
 
-      # ---------------------------------------------------------------
-      # Prepare build resources
-      # ---------------------------------------------------------------
       - name: Prepare build resources
         shell: pwsh
         run: |
@@ -88,9 +78,6 @@ jobs:
             Set-Content -Path "scripts/after-sign.js" -Value "exports.default = async function afterSign(context) { console.log('afterSign: skipping (not darwin)') }" -Encoding utf8
           }
 
-      # ---------------------------------------------------------------
-      # Build Next.js standalone output
-      # ---------------------------------------------------------------
       - name: Build Next.js
         run: pnpm build:next
         env:
@@ -98,137 +85,104 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           NEXT_PRIVATE_OUTPUT_TRACE_ROOT: ${{ github.workspace }}
 
-      # ---------------------------------------------------------------
-      # Build Electron main + preload, bundle Node.js runtime, etc.
-      # ---------------------------------------------------------------
       - name: Build Electron
         run: pnpm build:electron
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      # ---------------------------------------------------------------
-      # CRITICAL: Prepare standalone directory for packaging.
-      # Copy .next/standalone to packaged-standalone/ and ensure
-      # 'next' and all required modules are present.
-      # ---------------------------------------------------------------
-      - name: Prepare packaged standalone
+      - name: Prepare standalone for afterPack injection
         shell: pwsh
         run: |
-          $src = ".next\standalone"
-          $dst = "packaged-standalone"
-
-          if (Test-Path $dst) {
-            Remove-Item -Path $dst -Recurse -Force
+          if (Test-Path "standalone-stage") {
+            Remove-Item -Path "standalone-stage" -Recurse -Force
           }
-
-          Write-Host "Copying standalone to packaged-standalone..."
-          Copy-Item -Path $src -Destination $dst -Recurse -Force
-          Write-Host "Copy complete."
-
-          # Check if 'next' module exists after copy
-          $nextPkg = "packaged-standalone\node_modules\next\package.json"
-          if (Test-Path $nextPkg) {
-            Write-Host "next module already present in standalone."
+          Copy-Item -Path ".next\standalone" -Destination "standalone-stage" -Recurse -Force
+          Write-Host "Copied standalone to standalone-stage"
+          if (Test-Path "standalone-stage\node_modules\next\package.json") {
+            Write-Host "next module already present"
           } else {
-            Write-Host "next module MISSING - copying from project node_modules..."
-
-            # Try direct path
+            Write-Host "Copying next module into standalone-stage..."
             $nextSrc = "node_modules\next"
             if (-not (Test-Path "$nextSrc\package.json")) {
-              $nextSrc = $null
-              # Try pnpm store
               $pnpmEntry = Get-ChildItem -Path "node_modules\.pnpm" -Directory -ErrorAction SilentlyContinue |
                 Where-Object { $_.Name -like "next@*" } | Select-Object -First 1
               if ($pnpmEntry) {
                 $candidate = Join-Path $pnpmEntry.FullName "node_modules\next"
-                if (Test-Path "$candidate\package.json") {
-                  $nextSrc = $candidate
-                }
+                if (Test-Path "$candidate\package.json") { $nextSrc = $candidate }
               }
             }
-
-            if ($nextSrc -and (Test-Path "$nextSrc\package.json")) {
-              Write-Host "Found next at: $nextSrc"
-              New-Item -ItemType Directory -Path "packaged-standalone\node_modules\next" -Force | Out-Null
-              Copy-Item -Path "$nextSrc\*" -Destination "packaged-standalone\node_modules\next" -Recurse -Force
-              Write-Host "Copied next module."
-            } else {
-              Write-Error "Cannot find next package in node_modules!"
-              exit 1
-            }
-
-            # Copy key next runtime deps
-            $deps = @("@next", "styled-jsx", "postcss", "nanoid", "critters", "cssnano", "lightningcss")
-            foreach ($dep in $deps) {
-              $depDest = "packaged-standalone\node_modules\$dep"
-              if (-not (Test-Path "$depDest\package.json")) {
-                $found = $null
-                if (Test-Path "node_modules\$dep\package.json") {
-                  $found = "node_modules\$dep"
-                } else {
-                  $candidates = Get-ChildItem -Path "node_modules\.pnpm" -Directory -ErrorAction SilentlyContinue |
-                    Where-Object { $_.Name -like "*${dep}*" } | Select-Object -First 1
-                  if ($candidates) {
-                    $inner = Join-Path $candidates.FullName "node_modules\$dep"
-                    if (Test-Path "$inner\package.json") { $found = $inner }
+            if (Test-Path "$nextSrc\package.json") {
+              New-Item -ItemType Directory -Path "standalone-stage\node_modules\next" -Force | Out-Null
+              Copy-Item -Path "$nextSrc\*" -Destination "standalone-stage\node_modules\next" -Recurse -Force
+              Write-Host "Copied next module"
+              $deps = @("@next", "styled-jsx", "postcss", "nanoid")
+              foreach ($dep in $deps) {
+                $depDest = "standalone-stage\node_modules\$dep"
+                if (-not (Test-Path "$depDest\package.json")) {
+                  $depSrc = "node_modules\$dep"
+                  if (-not (Test-Path "$depSrc\package.json")) {
+                    $c = Get-ChildItem -Path "node_modules\.pnpm" -Directory -ErrorAction SilentlyContinue |
+                      Where-Object { $_.Name -like "*${dep}*" } | Select-Object -First 1
+                    if ($c) {
+                      $inner = Join-Path $c.FullName "node_modules\$dep"
+                      if (Test-Path "$inner\package.json") { $depSrc = $inner }
+                    }
+                  }
+                  if (Test-Path "$depSrc\package.json") {
+                    New-Item -ItemType Directory -Path $depDest -Force | Out-Null
+                    Copy-Item -Path "$depSrc\*" -Destination $depDest -Recurse -Force
+                    Write-Host "Copied dependency: $dep"
                   }
                 }
-                if ($found) {
-                  New-Item -ItemType Directory -Path $depDest -Force | Out-Null
-                  Copy-Item -Path "$found\*" -Destination $depDest -Recurse -Force
-                  Write-Host "Copied $dep"
-                }
               }
+            } else {
+              Write-Error "Cannot find next package!"
+              exit 1
             }
           }
-
-          # Final verification with hardcoded paths
-          Write-Host ""
-          Write-Host "=== Final verification ==="
-          $nmDir = "packaged-standalone\node_modules"
-          $nmCount = (Get-ChildItem -Path $nmDir -Directory -ErrorAction SilentlyContinue).Count
-          Write-Host "Total packages: $nmCount"
-
-          if (Test-Path "packaged-standalone\node_modules\next\package.json") {
-            Write-Host "next: OK"
-          } else {
-            Write-Host "DEBUG: next directory contents:"
-            Get-ChildItem -Path "packaged-standalone\node_modules\next" -ErrorAction SilentlyContinue | Select-Object -First 10 | ForEach-Object { Write-Host "  $($_.Name)" }
-            Write-Error "next module verification FAILED!"
+          if (-not (Test-Path "standalone-stage\node_modules\next\package.json")) {
+            Write-Error "VERIFICATION FAILED: next module not found!"
             exit 1
           }
-
-          if (Test-Path "packaged-standalone\server.js") {
-            Write-Host "server.js: OK"
-          } else {
-            Write-Error "server.js MISSING!"
+          if (-not (Test-Path "standalone-stage\server.js")) {
+            Write-Error "VERIFICATION FAILED: server.js not found!"
             exit 1
           }
+          $pkgCount = (Get-ChildItem -Path "standalone-stage\node_modules" -Directory).Count
+          Write-Host "Verification passed: $pkgCount packages, next OK, server.js OK"
 
-          Write-Host "=== All checks passed ==="
-
-      # ---------------------------------------------------------------
-      # Verify all build artifacts
-      # ---------------------------------------------------------------
-      - name: Verify build artifacts
-        shell: pwsh
-        run: |
-          Write-Host "dist-electron: $(Test-Path 'dist-electron')"
-          Write-Host "packaged-standalone: $(Test-Path 'packaged-standalone')"
-          Write-Host "node-runtime: $(Test-Path 'node-runtime')"
-
-      # ---------------------------------------------------------------
-      # Package Windows installer
-      # ---------------------------------------------------------------
       - name: Package Windows installer
         run: pnpm exec electron-builder --win --x64
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ---------------------------------------------------------------
-      # List and upload artifacts
-      # ---------------------------------------------------------------
+      - name: Verify installer contents
+        shell: pwsh
+        run: |
+          $unpackedDir = "release\win-unpacked"
+          if (Test-Path $unpackedDir) {
+            Write-Host "=== win-unpacked contents ==="
+            Get-ChildItem -Path $unpackedDir | Select-Object Name, @{N='Size(KB)';E={[math]::Round($_.Length/1KB,1)}} | Format-Table
+            $resourcesDir = "$unpackedDir\resources"
+            if (Test-Path "$resourcesDir\standalone\server.js") {
+              Write-Host "server.js: PRESENT"
+            } else {
+              Write-Host "server.js: MISSING"
+            }
+            if (Test-Path "$resourcesDir\standalone\node_modules\next\package.json") {
+              Write-Host "next module: PRESENT"
+            } else {
+              Write-Host "next module: MISSING"
+            }
+            if (Test-Path "$resourcesDir\standalone\node_modules") {
+              $nmCount = (Get-ChildItem -Path "$resourcesDir\standalone\node_modules" -Directory).Count
+              Write-Host "node_modules packages: $nmCount"
+            }
+          } else {
+            Write-Host "win-unpacked directory not found"
+          }
+
       - name: List release artifacts
         shell: pwsh
         run: |
@@ -255,9 +209,7 @@ jobs:
           name: "Forge ${{ github.ref_name }} (Windows)"
           body: |
             ## Windows 安装包
-
             下载 `.exe` 文件，双击安装即可。
-
             **使用前请确保已安装 Claude Code CLI：**
             ```bash
             npm install -g @anthropic-ai/claude-code
