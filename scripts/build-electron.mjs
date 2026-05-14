@@ -28,7 +28,7 @@ async function buildElectron() {
     format: 'cjs',
   })
 
-  console.log('✅ Electron main + preload built')
+  console.log('Electron main + preload built')
 }
 
 // Step 2: Resolve symlinks in .next/standalone
@@ -69,7 +69,7 @@ function resolveSymlinks(dir) {
     }
   }
   walk(dir)
-  console.log(`✅ Resolved ${resolved} symlinks in standalone`)
+  console.log(`Resolved ${resolved} symlinks in standalone`)
 }
 
 // Step 3: Copy templates/ to .next/standalone/ for production server access
@@ -79,9 +79,9 @@ function copyTemplates(standaloneDir) {
   try {
     lstatSync(src)
     cpSync(src, dest, { recursive: true })
-    console.log('✅ Copied templates/ to standalone')
+    console.log('Copied templates/ to standalone')
   } catch {
-    console.log('⚠️  No templates/ directory found — skipping')
+    console.log('No templates/ directory found — skipping')
   }
 }
 
@@ -119,9 +119,9 @@ function copyRuntimeAssets(standaloneDir) {
   if (existsSync(staticSrc)) {
     rmSync(staticDest, { recursive: true, force: true })
     cpSync(staticSrc, staticDest, { recursive: true })
-    console.log('✅ Copied .next/static to standalone app root')
+    console.log('Copied .next/static to standalone app root')
   } else {
-    console.log('⚠️  No .next/static directory found — skipping')
+    console.log('No .next/static directory found — skipping')
   }
 
   const publicSrc = join(process.cwd(), 'public')
@@ -129,9 +129,9 @@ function copyRuntimeAssets(standaloneDir) {
   if (existsSync(publicSrc)) {
     rmSync(publicDest, { recursive: true, force: true })
     cpSync(publicSrc, publicDest, { recursive: true })
-    console.log('✅ Copied public/ to standalone app root')
+    console.log('Copied public/ to standalone app root')
   } else {
-    console.log('⚠️  No public/ directory found — skipping')
+    console.log('No public/ directory found — skipping')
   }
 }
 
@@ -201,7 +201,7 @@ function fixPnpmHoisting(standaloneDir) {
     if (fixed === 0) break  // No more gaps found
   }
 
-  if (totalFixed > 0) console.log(`✅ Fixed ${totalFixed} pnpm hoisting gap(s)`)
+  if (totalFixed > 0) console.log(`Fixed ${totalFixed} pnpm hoisting gap(s)`)
 }
 
 // Step 4: Strip developer machine paths from standalone build output.
@@ -248,7 +248,7 @@ function stripDevPaths(standaloneDir) {
   }
 
   walkAndStrip(join(standaloneDir, '.next'))
-  console.log(`✅ Stripped developer paths from ${replaced} file(s)`)
+  console.log(`Stripped developer paths from ${replaced} file(s)`)
 }
 
 // Step 5: Remove .forge-data/ from standalone if it leaked in
@@ -257,14 +257,19 @@ function cleanForgeData(standaloneDir) {
   try {
     lstatSync(forgeData)
     rmSync(forgeData, { recursive: true, force: true })
-    console.log('✅ Removed .forge-data/ from standalone (privacy)')
+    console.log('Removed .forge-data/ from standalone (privacy)')
   } catch { /* doesn't exist, good */ }
 }
 
 // Step 6: Download and bundle Node.js runtime for the packaged app.
-// Eliminates dependency on user having a specific Node.js version installed.
+// CRITICAL: This version MUST match the Node.js version used by CI to compile
+// native modules (e.g. better-sqlite3). Mismatched versions cause
+// NODE_MODULE_VERSION errors and all API routes return 500.
+//
+// Electron 40.x embeds Node.js v24.x. CI uses setup-node with v24.
+// If you change the CI Node.js version, update this to match.
 async function bundleNodeRuntime() {
-  const NODE_VERSION = '22.22.2'
+  const NODE_VERSION = '24.14.0'
   const arch = process.arch  // arm64 or x64
   const isWin = process.platform === 'win32'
   const platform = process.platform === 'darwin' ? 'darwin' : isWin ? 'win' : 'linux'
@@ -276,17 +281,25 @@ async function bundleNodeRuntime() {
   // Node binary path differs by platform
   const nodeBin = isWin ? join(dest, 'node.exe') : join(dest, 'bin', 'node')
 
-  // Skip if already downloaded
+  // Verify existing bundle matches the required version
   if (existsSync(nodeBin)) {
-    const ver = execSync(`"${nodeBin}" --version`, { encoding: 'utf-8' }).trim()
-    if (ver === `v${NODE_VERSION}`) {
-      console.log(`✅ Node.js runtime already bundled (${ver})`)
-      return
+    try {
+      const ver = execSync(`"${nodeBin}" --version`, { encoding: 'utf-8' }).trim()
+      if (ver === `v${NODE_VERSION}`) {
+        console.log(`Node.js runtime already bundled (${ver})`)
+        return
+      }
+      // Version mismatch — delete and re-download
+      console.log(`Existing Node.js ${ver} does not match required ${NODE_VERSION} — re-downloading`)
+      rmSync(dest, { recursive: true, force: true })
+    } catch {
+      // Corrupted or unusable — re-download
+      console.log('Existing node binary unusable — re-downloading')
+      rmSync(dest, { recursive: true, force: true })
     }
   }
 
-  console.log(`⬇️  Downloading Node.js ${NODE_VERSION} (${platform}-${arch})...`)
-  rmSync(dest, { recursive: true, force: true })
+  console.log(`Downloading Node.js ${NODE_VERSION} (${platform}-${arch})...`)
   mkdirSync(dest, { recursive: true })
 
   const archive = join(process.cwd(), `node-runtime.${ext}`)
@@ -337,51 +350,18 @@ async function bundleNodeRuntime() {
     }
   }
 
+  // Verify the downloaded binary works
   const finalVer = execSync(`"${nodeBin}" --version`, { encoding: 'utf-8' }).trim()
-  console.log(`✅ Node.js runtime bundled (${finalVer})`)
-}
+  console.log(`Node.js runtime bundled (${finalVer})`)
 
-// Step 7: Rebuild better-sqlite3 against the bundled Node.js version
-function rebuildNativeModules() {
-  const isWin = process.platform === 'win32'
-  const nodeBin = isWin
-    ? join(process.cwd(), 'node-runtime', 'node.exe')
-    : join(process.cwd(), 'node-runtime', 'bin', 'node')
-  if (!existsSync(nodeBin)) {
-    console.log('⚠️  No bundled Node.js found — skipping native module rebuild')
-    return
-  }
-
-  const nodeVersion = execSync(`"${nodeBin}" --version`, { encoding: 'utf-8' }).trim()
-  const currentVersion = process.version
-
-  if (nodeVersion === currentVersion) {
-    console.log(`✅ Native modules already built for ${nodeVersion}`)
-    return
-  }
-
-  console.log(`🔨 Rebuilding better-sqlite3 for ${nodeVersion}...`)
-  // Use the bundled Node's headers for native module compilation
-  const nodeDir = join(process.cwd(), 'node-runtime')
-  try {
-    execSync(`npx --yes node-gyp rebuild --release --target=${nodeVersion.replace('v','')} --nodedir="${nodeDir}"`, {
-      cwd: join(process.cwd(), 'node_modules', '.pnpm', 'better-sqlite3@11.10.0', 'node_modules', 'better-sqlite3'),
-      stdio: 'pipe',
-      env: { ...process.env, npm_config_nodedir: nodeDir },
-    })
-    console.log(`✅ better-sqlite3 rebuilt for ${nodeVersion}`)
-  } catch (err) {
-    // Fallback: try prebuild-install
-    console.log(`⚠️  node-gyp failed, trying prebuild-install...`)
-    try {
-      execSync(`npx --yes prebuild-install --runtime=node --target=${nodeVersion.replace('v','')}`, {
-        cwd: join(process.cwd(), 'node_modules', '.pnpm', 'better-sqlite3@11.10.0', 'node_modules', 'better-sqlite3'),
-        stdio: 'pipe',
-      })
-      console.log(`✅ better-sqlite3 prebuild installed for ${nodeVersion}`)
-    } catch {
-      console.log(`⚠️  Could not rebuild better-sqlite3 for ${nodeVersion} — using current build`)
-    }
+  // Warn if CI Node.js version doesn't match
+  const ciVer = process.version
+  if (ciVer.replace('v', '').split('.').slice(0, 2).join('.') !== NODE_VERSION.split('.').slice(0, 2).join('.')) {
+    console.warn(``)
+    console.warn(`WARNING: CI Node.js version (${ciVer}) does not match bundled runtime (${finalVer}).`)
+    console.warn(`Native modules (e.g. better-sqlite3) compiled with ${ciVer} will NOT work with ${finalVer}.`)
+    console.warn(`Update your CI workflow to use Node.js ${NODE_VERSION} via actions/setup-node.`)
+    console.warn(``)
   }
 }
 
@@ -425,7 +405,7 @@ function ensureExternalDeps(standaloneDir) {
     ensurePkg(ext)
   }
 
-  if (copied > 0) console.log(`✅ Copied ${copied} missing transitive dep(s) for external packages`)
+  if (copied > 0) console.log(`Copied ${copied} missing transitive dep(s) for external packages`)
 }
 
 // Step 3d: Ensure the `next` framework package is present in standalone/node_modules.
@@ -462,13 +442,12 @@ function ensureFrameworkInStandalone(standaloneDir) {
     fixPnpmHoisting(standaloneDir)
   }
 
-  if (copied > 0) console.log(`✅ Ensured ${copied} framework package(s) in standalone`)
+  if (copied > 0) console.log(`Ensured ${copied} framework package(s) in standalone`)
 }
 
 // Main
 await buildElectron()
 await bundleNodeRuntime()
-rebuildNativeModules()
 
 const standaloneDir = join(process.cwd(), '.next', 'standalone')
 try {
@@ -487,5 +466,5 @@ try {
   fixPnpmHoisting(appDir)
   resolveSymlinks(appDir)
 } catch {
-  console.log('⚠️  No .next/standalone found — skipping symlink resolution (dev build?)')
+  console.log('No .next/standalone found — skipping standalone processing (dev build?)')
 }
