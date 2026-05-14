@@ -6,9 +6,6 @@ on:
     tags:
       - 'v*'
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -17,10 +14,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # ---------------------------------------------------------------
+      # Use Node.js v24 to match Electron 40.x's embedded Node.js.
+      # This ensures better-sqlite3 native module is compiled with the
+      # same NODE_MODULE_VERSION as the bundled runtime.
+      # ---------------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -43,6 +45,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # ---------------------------------------------------------------
+      # Patch Next.js glob to skip EPERM/EACCES on Windows
+      # ---------------------------------------------------------------
       - name: Patch Next.js glob to skip EPERM/EACCES on Windows
         shell: pwsh
         run: |
@@ -67,6 +72,9 @@ jobs:
             Write-Host "Pattern not found in glob.js - file may have changed."
           }
 
+      # ---------------------------------------------------------------
+      # Prepare build resources
+      # ---------------------------------------------------------------
       - name: Prepare build resources
         shell: pwsh
         run: |
@@ -78,6 +86,9 @@ jobs:
             Set-Content -Path "scripts/after-sign.js" -Value "exports.default = async function afterSign(context) { console.log('afterSign: skipping (not darwin)') }" -Encoding utf8
           }
 
+      # ---------------------------------------------------------------
+      # Build Next.js standalone output
+      # ---------------------------------------------------------------
       - name: Build Next.js
         run: pnpm build:next
         env:
@@ -85,77 +96,66 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           NEXT_PRIVATE_OUTPUT_TRACE_ROOT: ${{ github.workspace }}
 
+      # ---------------------------------------------------------------
+      # Build Electron main + preload, bundle Node.js runtime, etc.
+      # ---------------------------------------------------------------
       - name: Build Electron
         run: pnpm build:electron
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
+      # ---------------------------------------------------------------
+      # Verify Node.js version alignment
+      # ---------------------------------------------------------------
+      - name: Verify Node.js version alignment
+        shell: pwsh
+        run: |
+          $ciNodeVer = (node --version)
+          Write-Host "CI Node.js version: $ciNodeVer"
+          
+          $bundledNode = "node-runtime\node.exe"
+          if (Test-Path $bundledNode) {
+            $bundledVer = & $bundledNode --version
+            Write-Host "Bundled Node.js version: $bundledVer"
+            
+            if ($ciNodeVer -ne $bundledVer) {
+              Write-Error "VERSION MISMATCH: CI ($ciNodeVer) vs bundled ($bundledVer)!"
+              Write-Error "better-sqlite3 native module will fail to load."
+              exit 1
+            }
+            Write-Host "Node.js versions aligned: $ciNodeVer == $bundledVer"
+          } else {
+            Write-Error "Bundled node.exe not found at $bundledNode"
+            exit 1
+          }
+
+          # Verify better-sqlite3 .node file exists
+          $sqliteNode = ".next\standalone\node_modules\.pnpm\better-sqlite3@*\node_modules\better-sqlite3\build\Release\better_sqlite3.node"
+          $sqliteFound = Get-Item -Path $sqliteNode -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($sqliteFound) {
+            Write-Host "better_sqlite3.node found: $($sqliteFound.FullName)"
+          } else {
+            Write-Host "Warning: better_sqlite3.node not found via glob"
+          }
+
+      # ---------------------------------------------------------------
+      # CRITICAL: Prepare standalone with 'next' module.
+      # electron-builder's extraResources/extraFiles filter out node_modules,
+      # so we prepare a staging directory and inject it via afterPack hook.
+      # ---------------------------------------------------------------
       - name: Prepare standalone for afterPack injection
         shell: pwsh
         run: |
+          # Remove old staging area
           if (Test-Path "standalone-stage") {
             Remove-Item -Path "standalone-stage" -Recurse -Force
           }
 
-          # Find the actual app root inside .next\standalone (where server.js lives)
-          # Next.js may nest it under a subdirectory named after the project
-          $standaloneBase = ".next\standalone"
-          $serverJsRoot = $null
+          # Copy entire standalone output
+          Copy-Item -Path ".next\standalone" -Destination "standalone-stage" -Recurse -Force
+          Write-Host "Copied standalone to standalone-stage"
 
-          # Check direct location first
-          if (Test-Path "$standaloneBase\server.js") {
-            $serverJsRoot = $standaloneBase
-            Write-Host "server.js found directly at: $serverJsRoot"
-          } else {
-            # Search one level deep for server.js
-            $found = Get-ChildItem -Path $standaloneBase -Directory -ErrorAction SilentlyContinue |
-              Where-Object { Test-Path (Join-Path $_.FullName "server.js") } |
-              Select-Object -First 1
-            if ($found) {
-              $serverJsRoot = $found.FullName
-              Write-Host "server.js found in subdirectory: $serverJsRoot"
-            } else {
-              # Search recursively (skip node_modules and .next)
-              $found = Get-ChildItem -Path $standaloneBase -Recurse -Filter "server.js" -ErrorAction SilentlyContinue |
-                Where-Object { $_.FullName -notlike "*\node_modules\*" -and $_.FullName -notlike "*\.next\*" } |
-                Select-Object -First 1
-              if ($found) {
-                $serverJsRoot = $found.DirectoryName
-                Write-Host "server.js found recursively at: $serverJsRoot"
-              }
-            }
-          }
-
-          if (-not $serverJsRoot) {
-            Write-Error "FATAL: Cannot find server.js anywhere under $standaloneBase"
-            Write-Host "Contents of $standaloneBase :"
-            Get-ChildItem -Path $standaloneBase -ErrorAction SilentlyContinue | Select-Object Name | Format-Table
-            exit 1
-          }
-
-          # Copy the app root (containing server.js) to standalone-stage
-          Write-Host "Copying from $serverJsRoot to standalone-stage ..."
-          Copy-Item -Path $serverJsRoot -Destination "standalone-stage" -Recurse -Force
-          Write-Host "Copied standalone app root to standalone-stage"
-
-          # Also copy .next/static into standalone-stage/.next/static if missing
-          $staticSrc = ".next\static"
-          $staticDest = "standalone-stage\.next\static"
-          if ((Test-Path $staticSrc) -and (-not (Test-Path $staticDest))) {
-            New-Item -ItemType Directory -Path "standalone-stage\.next" -Force | Out-Null
-            Copy-Item -Path $staticSrc -Destination $staticDest -Recurse -Force
-            Write-Host "Copied .next\static to standalone-stage\.next\static"
-          }
-
-          # Copy public/ into standalone-stage/public if missing
-          $publicSrc = "public"
-          $publicDest = "standalone-stage\public"
-          if ((Test-Path $publicSrc) -and (-not (Test-Path $publicDest))) {
-            Copy-Item -Path $publicSrc -Destination $publicDest -Recurse -Force
-            Write-Host "Copied public\ to standalone-stage\public"
-          }
-
-          # Ensure next module is present in standalone-stage\node_modules
+          # Ensure 'next' module is present in staging area
           if (Test-Path "standalone-stage\node_modules\next\package.json") {
             Write-Host "next module already present"
           } else {
@@ -169,14 +169,17 @@ jobs:
                 if (Test-Path "$candidate\package.json") { $nextSrc = $candidate }
               }
             }
+
             if (Test-Path "$nextSrc\package.json") {
               New-Item -ItemType Directory -Path "standalone-stage\node_modules\next" -Force | Out-Null
               Copy-Item -Path "$nextSrc\*" -Destination "standalone-stage\node_modules\next" -Recurse -Force
               Write-Host "Copied next module"
+
+              # Copy key runtime dependencies
               $deps = @("@next", "styled-jsx", "postcss", "nanoid")
               foreach ($dep in $deps) {
                 $depDest = "standalone-stage\node_modules\$dep"
-                if (-not (Test-Path $depDest)) {
+                if (-not (Test-Path "$depDest\package.json")) {
                   $depSrc = "node_modules\$dep"
                   if (-not (Test-Path "$depSrc\package.json")) {
                     $c = Get-ChildItem -Path "node_modules\.pnpm" -Directory -ErrorAction SilentlyContinue |
@@ -209,42 +212,76 @@ jobs:
             exit 1
           }
           $pkgCount = (Get-ChildItem -Path "standalone-stage\node_modules" -Directory).Count
-          Write-Host "Verification passed: $pkgCount packages, next OK, server.js OK"
+          Write-Host "Verification passed: $pkgCount packages in node_modules, next OK, server.js OK"
 
+      # ---------------------------------------------------------------
+      # Package Windows installer
+      # The afterPack.js hook will inject standalone-stage into the
+      # packaged app BEFORE the NSIS installer is created.
+      # ---------------------------------------------------------------
       - name: Package Windows installer
         run: pnpm exec electron-builder --win --x64
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # ---------------------------------------------------------------
+      # Verify the built installer contains standalone
+      # ---------------------------------------------------------------
       - name: Verify installer contents
         shell: pwsh
         run: |
           $unpackedDir = "release\win-unpacked"
           if (Test-Path $unpackedDir) {
-            Write-Host "=== win-unpacked top-level ==="
-            Get-ChildItem -Path $unpackedDir | Select-Object Name | Format-Table
-            $saDir = "$unpackedDir\resources\standalone"
-            if (Test-Path $saDir) {
-              Write-Host "standalone directory: EXISTS"
-              if (Test-Path "$saDir\server.js") { Write-Host "server.js: PRESENT" } else { Write-Host "server.js: MISSING" }
-              if (Test-Path "$saDir\node_modules\next\package.json") { Write-Host "next module: PRESENT" } else { Write-Host "next module: MISSING" }
-              if (Test-Path "$saDir\node_modules") {
-                $n = (Get-ChildItem -Path "$saDir\node_modules" -Directory).Count
-                Write-Host "node_modules packages: $n"
-              }
+            Write-Host "=== win-unpacked contents ==="
+            Get-ChildItem -Path $unpackedDir | Select-Object Name, @{N='Size(KB)';E={[math]::Round($_.Length/1KB,1)}} | Format-Table
+
+            $resourcesDir = "$unpackedDir\resources"
+            if (Test-Path "$resourcesDir\standalone\server.js") {
+              Write-Host "server.js: PRESENT"
             } else {
-              Write-Host "standalone directory: MISSING"
+              Write-Host "server.js: MISSING"
+            }
+            if (Test-Path "$resourcesDir\standalone\node_modules\next\package.json") {
+              Write-Host "next module: PRESENT"
+            } else {
+              Write-Host "next module: MISSING"
+            }
+            if (Test-Path "$resourcesDir\standalone\node_modules") {
+              $nmCount = (Get-ChildItem -Path "$resourcesDir\standalone\node_modules" -Directory).Count
+              Write-Host "node_modules packages: $nmCount"
+            }
+            
+            # Verify node-runtime
+            $nodeExe = "$resourcesDir\node-runtime\node.exe"
+            if (Test-Path $nodeExe) {
+              $nodeVer = & $nodeExe --version
+              Write-Host "Bundled node.exe version: $nodeVer"
+            } else {
+              Write-Host "node.exe: MISSING"
+            }
+            
+            # Verify better-sqlite3 .node exists in standalone
+            $sqliteNode = Get-ChildItem -Path "$resourcesDir\standalone\node_modules" -Recurse -Filter "better_sqlite3.node" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($sqliteNode) {
+              Write-Host "better_sqlite3.node: PRESENT at $($sqliteNode.FullName)"
+            } else {
+              Write-Host "better_sqlite3.node: MISSING"
             }
           } else {
             Write-Host "win-unpacked directory not found"
           }
 
+      # ---------------------------------------------------------------
+      # List and upload artifacts
+      # ---------------------------------------------------------------
       - name: List release artifacts
         shell: pwsh
         run: |
           if (Test-Path release) {
             Get-ChildItem -Path release -Recurse -File | Select-Object Name, @{N='Size(MB)';E={[math]::Round($_.Length/1MB,2)}} | Format-Table
+          } else {
+            Write-Host "release/ directory not found"
           }
 
       - name: Upload Windows installer
@@ -264,7 +301,9 @@ jobs:
           name: "Forge ${{ github.ref_name }} (Windows)"
           body: |
             ## Windows 安装包
+
             下载 `.exe` 文件，双击安装即可。
+
             **使用前请确保已安装 Claude Code CLI：**
             ```bash
             npm install -g @anthropic-ai/claude-code
