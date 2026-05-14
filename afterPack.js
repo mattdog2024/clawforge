@@ -1,16 +1,11 @@
 // afterPack.js
 // electron-builder afterPack hook (CommonJS)
-// Injects Next.js standalone (with node_modules) into the packaged app
-// before NSIS installer is created.
+// Injects Next.js standalone (with node_modules) and Node.js runtime
+// into the packaged app before NSIS installer is created.
 
 const path = require('path');
 const fs = require('fs');
 const { execSync } = require('child_process');
-
-// electron-builder passes arch as a numeric enum (Arch):
-//   ia32 = 0, x64 = 1, armv7l = 2, arm64 = 3, universal = 4
-// Do NOT compare arch to the string 'x64' — it will always be false.
-const Arch = { ia32: 0, x64: 1, armv7l: 2, arm64: 3, universal: 4 };
 
 async function afterPack(context) {
   const { appOutDir, electronPlatformName, arch } = context;
@@ -18,16 +13,18 @@ async function afterPack(context) {
   console.log('[afterPack] ========================================');
   console.log('[afterPack] Hook started');
   console.log('[afterPack] appOutDir:', appOutDir);
-  console.log('[afterPack] platform:', electronPlatformName, 'arch:', arch, '(x64 =', Arch.x64, ')');
+  console.log('[afterPack] platform:', electronPlatformName, 'arch:', arch);
   console.log('[afterPack] cwd:', process.cwd());
   console.log('[afterPack] ========================================');
 
-  // arch is a number (Arch enum), NOT a string — compare numerically
-  if (electronPlatformName !== 'win32' || arch !== Arch.x64) {
-    console.log('[afterPack] Skipping non-win32/x64 target (platform=' + electronPlatformName + ' arch=' + arch + ')');
+  if (electronPlatformName !== 'win32' || arch !== 'x64') {
+    console.log('[afterPack] Skipping non-win32/x64 target');
     return;
   }
 
+  // ---------------------------------------------------------------
+  // Step 1: Find and inject standalone-stage
+  // ---------------------------------------------------------------
   let standaloneStage = path.join(process.cwd(), 'standalone-stage');
   if (!fs.existsSync(standaloneStage)) {
     const altPath = path.resolve(__dirname, '..', 'standalone-stage');
@@ -53,7 +50,7 @@ async function afterPack(context) {
   const resourcesDir = path.join(appOutDir, 'resources');
   const standaloneDest = path.join(resourcesDir, 'standalone');
 
-  console.log('[afterPack] Copying to:', standaloneDest);
+  console.log('[afterPack] Copying standalone to:', standaloneDest);
 
   if (!fs.existsSync(resourcesDir)) {
     throw new Error('resources dir not found: ' + resourcesDir);
@@ -66,12 +63,69 @@ async function afterPack(context) {
         { stdio: 'pipe', maxBuffer: 10 * 1024 * 1024 }
       );
     } catch (e) {
-      // robocopy non-zero exit codes (1-7) are often OK (files copied successfully)
+      // robocopy exits with codes > 0 for various reasons; check result manually
     }
   } else {
     cpSyncRecursive(standaloneStage, standaloneDest);
   }
 
+  // ---------------------------------------------------------------
+  // Step 2: Copy node-runtime manually (NOT via extraResources)
+  //
+  // electron-builder's extraResources can interfere with the bundled
+  // node.exe — it may get replaced by Electron's internal Node.js.
+  // By copying it here in afterPack, we ensure the correct version
+  // is placed AFTER electron-builder has finished its resource processing.
+  // ---------------------------------------------------------------
+  const nodeRuntimeSrc = path.join(process.cwd(), 'node-runtime');
+  const nodeRuntimeDest = path.join(resourcesDir, 'node-runtime');
+
+  if (!fs.existsSync(nodeRuntimeSrc)) {
+    console.error('[afterPack] node-runtime NOT FOUND at:', nodeRuntimeSrc);
+    console.error('[afterPack] cwd contents:', fs.readdirSync(process.cwd()).join(', '));
+    throw new Error('node-runtime not found');
+  }
+
+  // Verify the source node.exe version BEFORE copying
+  const srcNodeExe = path.join(nodeRuntimeSrc, 'node.exe');
+  if (!fs.existsSync(srcNodeExe)) {
+    throw new Error('node-runtime/node.exe not found at: ' + srcNodeExe);
+  }
+
+  const nodeVer = execSync('"' + srcNodeExe + '" --version', { encoding: 'utf-8' }).trim();
+  console.log('[afterPack] Source node.exe version:', nodeVer);
+
+  // Ensure the destination is clean (electron-builder may have put something there)
+  if (fs.existsSync(nodeRuntimeDest)) {
+    fs.rmSync(nodeRuntimeDest, { recursive: true, force: true });
+  }
+  fs.mkdirSync(nodeRuntimeDest, { recursive: true });
+
+  // Copy node.exe
+  const destNodeExe = path.join(nodeRuntimeDest, 'node.exe');
+  fs.copyFileSync(srcNodeExe, destNodeExe);
+
+  // Verify the copied node.exe version
+  const destNodeVer = execSync('"' + destNodeExe + '" --version', { encoding: 'utf-8' }).trim();
+  console.log('[afterPack] Destination node.exe version:', destNodeVer);
+
+  if (nodeVer !== destNodeVer) {
+    throw new Error('node.exe version mismatch after copy: ' + nodeVer + ' vs ' + destNodeVer);
+  }
+
+  // ---------------------------------------------------------------
+  // Step 3: Verify better-sqlite3 .node file is present
+  // ---------------------------------------------------------------
+  const sqliteNodePath = findFile(standaloneDest, 'better_sqlite3.node');
+  if (sqliteNodePath) {
+    console.log('[afterPack] better_sqlite3.node found at:', sqliteNodePath);
+  } else {
+    console.warn('[afterPack] WARNING: better_sqlite3.node NOT FOUND in standalone');
+  }
+
+  // ---------------------------------------------------------------
+  // Final verification
+  // ---------------------------------------------------------------
   if (!fs.existsSync(path.join(standaloneDest, 'server.js'))) {
     throw new Error('server.js missing after injection');
   }
@@ -80,9 +134,24 @@ async function afterPack(context) {
   }
 
   const nmPackages = fs.readdirSync(path.join(standaloneDest, 'node_modules'))
-    .filter(n => { try { return fs.statSync(path.join(standaloneDest, 'node_modules', n)).isDirectory(); } catch { return false; } });
+    .filter(function(n) { try { return fs.statSync(path.join(standaloneDest, 'node_modules', n)).isDirectory(); } catch(e) { return false; } });
 
   console.log('[afterPack] SUCCESS - server.js OK, next OK, ' + nmPackages.length + ' packages');
+  console.log('[afterPack] node.exe version:', destNodeVer);
+}
+
+function findFile(dir, filename) {
+  var entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch(e) { return null; }
+  for (var i = 0; i < entries.length; i++) {
+    var full = path.join(dir, entries[i].name);
+    if (entries[i].isFile() && entries[i].name === filename) return full;
+    if (entries[i].isDirectory()) {
+      var result = findFile(full, filename);
+      if (result) return result;
+    }
+  }
+  return null;
 }
 
 function cpSyncRecursive(src, dest) {
@@ -95,5 +164,6 @@ function cpSyncRecursive(src, dest) {
   }
 }
 
+// Export for electron-builder (both CJS and ESM patterns)
 module.exports = afterPack;
 module.exports.default = afterPack;
