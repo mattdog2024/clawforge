@@ -7,18 +7,24 @@ const path = require('path');
 const fs = require('fs');
 const { execSync } = require('child_process');
 
+// electron-builder passes arch as a numeric enum (Arch):
+//   ia32 = 0, x64 = 1, armv7l = 2, arm64 = 3, universal = 4
+// Do NOT compare arch to the string 'x64' — it will always be false.
+const Arch = { ia32: 0, x64: 1, armv7l: 2, arm64: 3, universal: 4 };
+
 async function afterPack(context) {
   const { appOutDir, electronPlatformName, arch } = context;
 
   console.log('[afterPack] ========================================');
   console.log('[afterPack] Hook started');
   console.log('[afterPack] appOutDir:', appOutDir);
-  console.log('[afterPack] platform:', electronPlatformName, 'arch:', arch);
+  console.log('[afterPack] platform:', electronPlatformName, 'arch:', arch, '(x64 =', Arch.x64, ')');
   console.log('[afterPack] cwd:', process.cwd());
   console.log('[afterPack] ========================================');
 
-  if (electronPlatformName !== 'win32' || arch !== 'x64') {
-    console.log('[afterPack] Skipping non-win32/x64 target');
+  // arch is a number (Arch enum), NOT a string — compare numerically
+  if (electronPlatformName !== 'win32' || arch !== Arch.x64) {
+    console.log('[afterPack] Skipping non-win32/x64 target (platform=' + electronPlatformName + ' arch=' + arch + ')');
     return;
   }
 
@@ -60,7 +66,7 @@ async function afterPack(context) {
         { stdio: 'pipe', maxBuffer: 10 * 1024 * 1024 }
       );
     } catch (e) {
-      // robocopy non-zero exit codes are often OK
+      // robocopy non-zero exit codes (1-7) are often OK (files copied successfully)
     }
   } else {
     cpSyncRecursive(standaloneStage, standaloneDest);
