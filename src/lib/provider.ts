@@ -115,14 +115,11 @@ export function resolveProvider(model?: string): ResolvedProvider {
 
   // 1. Try built-in provider lookup
   const builtinProviderId = model ? MODEL_TO_PROVIDER[model] : undefined
-
   if (builtinProviderId) {
     const catalog = PROVIDER_CATALOG[builtinProviderId]
     if (!catalog) throw new Error(`Unknown provider for model: ${model}`)
 
-    const row = db.prepare('SELECT id, api_key, base_url, provider FROM api_providers WHERE id = ?').get(builtinProviderId) as {
-      id: string; api_key: string; base_url: string; provider: string
-    } | undefined
+    const row = db.prepare('SELECT id, api_key, base_url, provider FROM api_providers WHERE id = ?').get(builtinProviderId) as { id: string; api_key: string; base_url: string; provider: string } | undefined
 
     // For Anthropic: support custom endpoint override
     let baseUrl: string | undefined
@@ -134,18 +131,31 @@ export function resolveProvider(model?: string): ResolvedProvider {
     }
 
     if (row?.api_key) {
-      return { apiKey: row.api_key, baseUrl, provider: row.provider || builtinProviderId, providerId: row.id || builtinProviderId, isCliAuth: false, authType: catalog.authType }
+      return {
+        apiKey: row.api_key,
+        baseUrl,
+        provider: row.provider || builtinProviderId,
+        providerId: row.id || builtinProviderId,
+        isCliAuth: false,
+        authType: catalog.authType
+      }
     }
 
     // Anthropic CLI auth fallback
     if (builtinProviderId === 'anthropic' && isClaudeCliAuthenticated()) {
-      return { apiKey: '', baseUrl, provider: 'anthropic', providerId: row?.id || builtinProviderId, isCliAuth: true, authType: 'api_key' }
+      return {
+        apiKey: '',
+        baseUrl,
+        provider: 'anthropic',
+        providerId: row?.id || builtinProviderId,
+        isCliAuth: true,
+        authType: 'api_key'
+      }
     }
 
     if (builtinProviderId !== 'anthropic') {
       throw new Error(`No API key configured for ${builtinProviderId}. Please add your API key in Settings.`)
     }
-
     throw new Error('No Anthropic credentials found. Either add an API key in Settings, or run `claude login` in your terminal to authenticate with your Claude subscription.')
   }
 
@@ -153,17 +163,24 @@ export function resolveProvider(model?: string): ResolvedProvider {
   const customModel = parseCustomModelId(model)
   if (customModel) {
     const customRow = db.prepare(
-      "SELECT id, name, api_key, base_url FROM api_providers WHERE provider = 'custom' AND id = ? AND model_name = ? AND api_key != ''"
-    ).get(customModel.providerId, customModel.modelName) as { id: string; name: string; api_key: string; base_url: string } | undefined
+      "SELECT id, name, api_key, base_url, protocol FROM api_providers WHERE provider = 'custom' AND id = ? AND model_name = ? AND api_key != ''"
+    ).get(customModel.providerId, customModel.modelName) as { id: string; name: string; api_key: string; base_url: string; protocol?: string } | undefined
 
     if (customRow) {
+      // FIX: Anthropic-compatible custom providers need 'api_key' authType so the SDK
+      // subprocess receives ANTHROPIC_API_KEY (x-api-key header), not just ANTHROPIC_AUTH_TOKEN.
+      // The test connection uses direct HTTP fetch (works with Bearer), but the SDK subprocess
+      // uses the claude CLI which requires ANTHROPIC_API_KEY for Anthropic-compatible endpoints.
+      const authType: 'api_key' | 'auth_token' =
+        (customRow.protocol === 'openai-compatible') ? 'auth_token' : 'api_key'
+
       return {
         apiKey: customRow.api_key,
         baseUrl: customRow.base_url || undefined,
         provider: 'custom',
         providerId: customRow.id,
         isCliAuth: false,
-        authType: 'auth_token',
+        authType,
       }
     }
   }
@@ -171,33 +188,48 @@ export function resolveProvider(model?: string): ResolvedProvider {
   // Legacy custom provider lookup: match raw model_name in api_providers where provider='custom'
   if (model) {
     const customRow = db.prepare(
-      "SELECT id, name, api_key, base_url FROM api_providers WHERE provider = 'custom' AND model_name = ? AND api_key != ''"
-    ).get(model) as { id: string; name: string; api_key: string; base_url: string } | undefined
+      "SELECT id, name, api_key, base_url, protocol FROM api_providers WHERE provider = 'custom' AND model_name = ? AND api_key != ''"
+    ).get(model) as { id: string; name: string; api_key: string; base_url: string; protocol?: string } | undefined
 
     if (customRow) {
+      // FIX: same as above — use 'api_key' for Anthropic-compatible, 'auth_token' for OpenAI-compatible
+      const authType: 'api_key' | 'auth_token' =
+        (customRow.protocol === 'openai-compatible') ? 'auth_token' : 'api_key'
+
       return {
         apiKey: customRow.api_key,
         baseUrl: customRow.base_url || undefined,
         provider: 'custom',
         providerId: customRow.id,
         isCliAuth: false,
-        authType: 'auth_token',  // Custom providers use Bearer token (OpenAI-compatible)
+        authType,
       }
     }
   }
 
   // 3. Default to Anthropic
   const catalog = PROVIDER_CATALOG.anthropic
-  const row = db.prepare("SELECT id, api_key, base_url, provider FROM api_providers WHERE id = 'anthropic'").get() as {
-    id: string; api_key: string; base_url: string; provider: string
-  } | undefined
-
+  const row = db.prepare("SELECT id, api_key, base_url, provider FROM api_providers WHERE id = 'anthropic'").get() as { id: string; api_key: string; base_url: string; provider: string } | undefined
   if (row?.api_key) {
-    return { apiKey: row.api_key, baseUrl: row.base_url || undefined, provider: 'anthropic', providerId: 'anthropic', isCliAuth: false, authType: catalog.authType }
+    return {
+      apiKey: row.api_key,
+      baseUrl: row.base_url || undefined,
+      provider: 'anthropic',
+      providerId: 'anthropic',
+      isCliAuth: false,
+      authType: catalog.authType
+    }
   }
 
   if (isClaudeCliAuthenticated()) {
-    return { apiKey: '', baseUrl: undefined, provider: 'anthropic', providerId: 'anthropic', isCliAuth: true, authType: 'api_key' }
+    return {
+      apiKey: '',
+      baseUrl: undefined,
+      provider: 'anthropic',
+      providerId: 'anthropic',
+      isCliAuth: true,
+      authType: 'api_key'
+    }
   }
 
   throw new Error('No Anthropic credentials found. Either add an API key in Settings, or run `claude login` in your terminal to authenticate with your Claude subscription.')
