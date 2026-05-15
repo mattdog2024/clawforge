@@ -18,10 +18,38 @@ const I18nContext = createContext<I18nContextType>({
 export function I18nProvider({ children, initialLocale = 'en' }: { children: ReactNode; initialLocale?: Locale }) {
   const [locale, setLocaleState] = useState<Locale>(initialLocale)
 
+  // On mount: load language from DB (via /api/settings) first, fall back to localStorage.
+  // This fixes the issue where localStorage is cleared between Electron restarts
+  // (different port = different origin = empty localStorage).
+  useEffect(() => {
+    const applyLocale = (saved: string | null) => {
+      if (saved === 'zh' || saved === 'en') {
+        setLocaleState(saved)
+        setGlobalLocale(saved)
+        document.documentElement.lang = saved === 'zh' ? 'zh' : 'en'
+      }
+    }
+    // Try DB first (authoritative, survives restarts)
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then((data: Record<string, string>) => {
+        if (data.language === 'zh' || data.language === 'en') {
+          applyLocale(data.language)
+        } else {
+          applyLocale(localStorage.getItem('forge-language'))
+        }
+      })
+      .catch(() => {
+        applyLocale(localStorage.getItem('forge-language'))
+      })
+  }, [])
+
   useEffect(() => {
     setGlobalLocale(locale)
     // Update html lang attribute
     document.documentElement.lang = locale === 'zh' ? 'zh' : 'en'
+    // Keep localStorage in sync as a fast-read cache
+    localStorage.setItem('forge-language', locale)
   }, [locale])
 
   const setLocale = useCallback((l: Locale) => {
