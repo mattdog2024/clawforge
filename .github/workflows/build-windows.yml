@@ -227,7 +227,7 @@ jobs:
       # packaged app BEFORE the NSIS installer is created.
       # ---------------------------------------------------------------
       - name: Package Windows installer
-        run: pnpm exec electron-builder --win --x64
+        run: pnpm exec electron-builder --win --x64 --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
