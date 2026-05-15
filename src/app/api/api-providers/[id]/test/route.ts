@@ -258,22 +258,47 @@ async function testViaCliAuth(): Promise<boolean> {
   const fs = await import('fs')
   const path = await import('path')
   const os = await import('os')
+  const isWindows = process.platform === 'win32'
 
   try {
-    // Try to find claude CLI — first via which, then check common paths
     let claudePath: string | null = null
-    const which = await execFileAsync('which', ['claude']).catch(() => null)
-    if (which?.stdout?.trim()) {
-      claudePath = which.stdout.trim()
-    } else {
-      // Fallback: check common installation paths (GUI apps may not have shell PATH)
-      const candidates = [
-        path.join(os.homedir(), '.local', 'bin', 'claude'),
-        '/usr/local/bin/claude',
-        '/opt/homebrew/bin/claude',
+
+    if (isWindows) {
+      // Windows: look for cli.js in npm global node_modules
+      const home = os.homedir()
+      const windowsCandidates = [
+        path.join(home, 'AppData', 'Roaming', 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'),
+        path.join(home, 'AppData', 'Local', 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'),
       ]
-      for (const c of candidates) {
+      for (const c of windowsCandidates) {
         if (fs.existsSync(c)) { claudePath = c; break }
+      }
+      if (!claudePath) {
+        // Try where.exe
+        try {
+          const { execSync } = await import('child_process')
+          const result = execSync('where.exe claude 2>nul', { timeout: 5000 })
+          const lines = result.toString().trim().split(/\r?\n/)
+          for (const line of lines) {
+            const found = line.trim()
+            if (found && fs.existsSync(found)) { claudePath = found; break }
+          }
+        } catch { /* not found */ }
+      }
+    } else {
+      // Unix: try which, then check common paths
+      const which = await execFileAsync('which', ['claude']).catch(() => null)
+      if (which?.stdout?.trim()) {
+        claudePath = which.stdout.trim()
+      } else {
+        const candidates = [
+          path.join(os.homedir(), '.local', 'bin', 'claude'),
+          '/usr/local/bin/claude',
+          '/opt/homebrew/bin/claude',
+        ]
+        for (const c of candidates) {
+          if (fs.existsSync(c)) { claudePath = c; break }
+        }
       }
     }
 
