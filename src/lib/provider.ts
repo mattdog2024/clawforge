@@ -24,6 +24,8 @@ export interface ResolvedProvider {
   isCliAuth: boolean
   /** Auth header type: 'api_key' for x-api-key, 'auth_token' for Bearer */
   authType: 'api_key' | 'auth_token'
+  /** Protocol for custom providers: 'anthropic-compatible' | 'openai-compatible' */
+  protocol?: 'anthropic-compatible' | 'openai-compatible'
 }
 
 /**
@@ -128,12 +130,10 @@ export function resolveProvider(model?: string): ResolvedProvider {
     ).get(customModel.providerId, customModel.modelName) as { id: string; name: string; api_key: string; base_url: string; protocol?: string } | undefined
 
     if (customRow) {
-      // FIX: Anthropic-compatible custom providers need 'api_key' authType so the SDK
-      // subprocess receives ANTHROPIC_API_KEY (x-api-key header).
-      // The test connection uses direct HTTP fetch (works with Bearer), but the SDK subprocess
-      // uses the claude CLI which requires ANTHROPIC_API_KEY for Anthropic-compatible endpoints.
       const authType: 'api_key' | 'auth_token' =
         (customRow.protocol === 'openai-compatible') ? 'auth_token' : 'api_key'
+      const protocol: 'anthropic-compatible' | 'openai-compatible' =
+        (customRow.protocol === 'openai-compatible') ? 'openai-compatible' : 'anthropic-compatible'
 
       return {
         apiKey: customRow.api_key,
@@ -142,6 +142,7 @@ export function resolveProvider(model?: string): ResolvedProvider {
         providerId: customRow.id,
         isCliAuth: false,
         authType,
+        protocol,
       }
     }
   }
@@ -201,6 +202,8 @@ export function resolveProvider(model?: string): ResolvedProvider {
     if (customRow) {
       const authType: 'api_key' | 'auth_token' =
         (customRow.protocol === 'openai-compatible') ? 'auth_token' : 'api_key'
+      const protocol: 'anthropic-compatible' | 'openai-compatible' =
+        (customRow.protocol === 'openai-compatible') ? 'openai-compatible' : 'anthropic-compatible'
 
       return {
         apiKey: customRow.api_key,
@@ -209,6 +212,7 @@ export function resolveProvider(model?: string): ResolvedProvider {
         providerId: customRow.id,
         isCliAuth: false,
         authType,
+        protocol,
       }
     }
   }

@@ -6,7 +6,6 @@ import type { ForgeAttachment } from '@/lib/sdk/client'
 import path from 'path'
 import { getUploadsDir } from '@/lib/forge-data'
 import { MessageMapper } from '@/lib/sdk/message-mapper'
-import type { SseEvent } from '@/lib/sdk/message-mapper'
 import { createPermissionBridge, cleanupStaleSessionAllowances } from '@/lib/sdk/permission-bridge'
 import { archiveOldMemories } from '@/lib/workspace-fs'
 import { resolveProvider } from '@/lib/provider'
@@ -14,6 +13,7 @@ import { runSessionCleanup } from '@/lib/session-cleanup'
 import { maybeFlushMemory } from '@/lib/memory-flush'
 import { extractFilePaths, resolveFileAttachments, parseMediaProtocol } from '@/lib/im/conversation-engine'
 import type { Query } from '@anthropic-ai/claude-agent-sdk'
+import { parseCustomModelId } from '@/lib/models'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -69,6 +69,203 @@ function buildPromptWithHistory(
     .join('\n\n')
 
   return `<conversation_history>\n${history}\n</conversation_history>\n\n${newMessage}`
+}
+
+/**
+ * Build messages array for custom provider direct HTTP calls.
+ * Includes conversation history from DB for multi-turn context.
+ */
+function buildMessagesForCustomProvider(
+  newMessage: string,
+  recentMessages: Array<{ role: string; content: string }>,
+): Array<{ role: string; content: string }> {
+  const messages: Array<{ role: string; content: string }> = []
+
+  for (const m of recentMessages.slice(-20)) {
+    let content = m.content
+    // For assistant messages stored as JSON blocks, extract text
+    if (content.startsWith('[{') || content.startsWith('[')) {
+      try {
+        const blocks = JSON.parse(content)
+        content = blocks
+          .filter((b: Record<string, unknown>) => b.type === 'text' && b.text)
+          .map((b: Record<string, unknown>) => b.text)
+          .join('\n')
+        if (!content) content = '[tool usage]'
+      } catch {
+        content = content.slice(0, 500)
+      }
+    }
+    messages.push({ role: m.role === 'user' ? 'user' : 'assistant', content })
+  }
+
+  messages.push({ role: 'user', content: newMessage })
+  return messages
+}
+
+/**
+ * Direct HTTP streaming call to custom provider (Anthropic-compatible or OpenAI-compatible).
+ * Bypasses Claude Code CLI entirely — no model name validation, no subprocess.
+ *
+ * Emits SSE events compatible with the frontend use-chat.ts handler:
+ *   { type: 'text_delta', text: '...' }
+ *   { type: 'done', messageId, userMessageId, inputTokens, outputTokens }
+ *   { type: 'error', error: '...' }
+ */
+async function streamCustomProvider(opts: {
+  protocol: 'anthropic-compatible' | 'openai-compatible'
+  baseUrl: string
+  apiKey: string
+  modelName: string
+  messages: Array<{ role: string; content: string }>
+  abortSignal: AbortSignal
+  emit: (data: Record<string, unknown>) => Promise<void>
+}): Promise<{ inputTokens: number; outputTokens: number; fullText: string }> {
+  const { protocol, baseUrl, apiKey, modelName, messages, abortSignal, emit } = opts
+  const cleanBase = baseUrl.replace(/\/+$/, '')
+
+  let inputTokens = 0
+  let outputTokens = 0
+  let fullText = ''
+
+  if (protocol === 'anthropic-compatible') {
+    // Build URL: strip trailing /v1 or /v1/messages, then append /v1/messages
+    const url = cleanBase.includes('/v1/messages')
+      ? cleanBase
+      : `${cleanBase.replace(/\/v1$/, '')}/v1/messages`
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'anthropic-version': '2023-06-01',
+        'x-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        model: modelName,
+        max_tokens: 8096,
+        stream: true,
+        messages,
+      }),
+      signal: abortSignal,
+    })
+
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '')
+      let errMsg = `HTTP ${res.status}`
+      try {
+        const parsed = JSON.parse(errBody)
+        errMsg = parsed?.error?.message || errMsg
+      } catch { /* ignore */ }
+      throw new Error(errMsg)
+    }
+
+    // Parse Anthropic SSE stream
+    const reader = res.body!.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const data = line.slice(6).trim()
+        if (data === '[DONE]') continue
+        try {
+          const event = JSON.parse(data)
+          // content_block_delta: text delta
+          if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+            const text = event.delta.text || ''
+            if (text) {
+              fullText += text
+              await emit({ type: 'text_delta', text })
+            }
+          }
+          // message_delta: usage info
+          if (event.type === 'message_delta' && event.usage) {
+            outputTokens = event.usage.output_tokens || 0
+          }
+          // message_start: input usage
+          if (event.type === 'message_start' && event.message?.usage) {
+            inputTokens = event.message.usage.input_tokens || 0
+          }
+        } catch { /* skip malformed lines */ }
+      }
+    }
+
+  } else {
+    // OpenAI-compatible: /chat/completions
+    const url = cleanBase.includes('/chat/completions')
+      ? cleanBase
+      : `${cleanBase}/chat/completions`
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: modelName,
+        max_tokens: 8096,
+        stream: true,
+        messages,
+      }),
+      signal: abortSignal,
+    })
+
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '')
+      let errMsg = `HTTP ${res.status}`
+      try {
+        const parsed = JSON.parse(errBody)
+        errMsg = parsed?.error?.message || errMsg
+      } catch { /* ignore */ }
+      throw new Error(errMsg)
+    }
+
+    // Parse OpenAI SSE stream
+    const reader = res.body!.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const data = line.slice(6).trim()
+        if (data === '[DONE]') continue
+        try {
+          const event = JSON.parse(data)
+          const delta = event.choices?.[0]?.delta
+          if (delta?.content) {
+            fullText += delta.content
+            await emit({ type: 'text_delta', text: delta.content })
+          }
+          // Usage (some providers include in last chunk)
+          if (event.usage) {
+            inputTokens = event.usage.prompt_tokens || 0
+            outputTokens = event.usage.completion_tokens || 0
+          }
+        } catch { /* skip malformed lines */ }
+      }
+    }
+  }
+
+  return { inputTokens, outputTokens, fullText }
 }
 
 export async function POST(req: Request) {
@@ -160,6 +357,78 @@ export async function POST(req: Request) {
 
   // Run the stream processing in the background — Response is returned immediately
   ;(async () => {
+    // ── Custom Provider Direct HTTP Mode ──────────────────────────────────────
+    // When using a custom provider (e.g. relay station), bypass Claude Code CLI entirely.
+    // Claude Code CLI validates model names against Anthropic's official list and rejects
+    // custom model names like "claude-sonnet-4-6". Direct HTTP avoids this validation.
+    const isCustomProvider = resolved.provider === 'custom' && resolved.apiKey && resolved.baseUrl
+    const customModelParsed = isCustomProvider ? parseCustomModelId(session.model) : null
+    const customModelName = customModelParsed?.modelName || session.model
+
+    if (isCustomProvider) {
+      try {
+        // Load conversation history for multi-turn context
+        const recentMsgs = db
+          .prepare('SELECT role, content FROM messages WHERE session_id = ? AND id != ? ORDER BY created_at ASC')
+          .all(sessionId, userMsgId) as Array<{ role: string; content: string }>
+
+        const messages = buildMessagesForCustomProvider(effectiveMessage, recentMsgs)
+        const protocol = resolved.protocol || 'anthropic-compatible'
+
+        console.log(`[forge-chat] Custom provider direct mode: ${protocol}, model=${customModelName}, baseUrl=${resolved.baseUrl}`)
+
+        const { inputTokens, outputTokens, fullText } = await streamCustomProvider({
+          protocol,
+          baseUrl: resolved.baseUrl!,
+          apiKey: resolved.apiKey,
+          modelName: customModelName,
+          messages,
+          abortSignal: abortController.signal,
+          emit,
+        })
+
+        // Build blocks from full text
+        const blocks: Record<string, unknown>[] = fullText
+          ? [{ type: 'text', text: fullText }]
+          : []
+
+        // Save assistant message to SQLite
+        const assistantMsgId = crypto.randomUUID()
+        db.prepare('INSERT INTO messages (id, session_id, role, content) VALUES (?, ?, ?, ?)').run(
+          assistantMsgId, sessionId, 'assistant', JSON.stringify(blocks)
+        )
+
+        // Update session title
+        const msgCount = db.prepare('SELECT COUNT(*) as count FROM messages WHERE session_id = ?').get(sessionId) as { count: number }
+        if (msgCount.count <= 2) {
+          const title = effectiveMessage.length > 50 ? effectiveMessage.slice(0, 47) + '...' : effectiveMessage
+          db.prepare("UPDATE sessions SET title = ?, updated_at = datetime('now') WHERE id = ?").run(title, sessionId)
+        } else {
+          db.prepare("UPDATE sessions SET updated_at = datetime('now') WHERE id = ?").run(sessionId)
+        }
+
+        await emit({
+          type: 'done',
+          messageId: assistantMsgId,
+          userMessageId: userMsgId,
+          inputTokens,
+          outputTokens,
+        })
+
+        // Background memory flush
+        maybeFlushMemory(sessionId, session.workspace, session.model, effectiveMessage, fullText.slice(0, 200))
+      } catch (err) {
+        db.prepare('DELETE FROM messages WHERE id = ?').run(userMsgId)
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+        console.error('[forge-chat] Custom provider error:', errorMessage)
+        await emit({ type: 'error', error: errorMessage })
+      } finally {
+        try { await writer.close() } catch { /* already closed */ }
+      }
+      return
+    }
+
+    // ── Standard Claude Code CLI Mode ─────────────────────────────────────────
     let mapper = new MessageMapper()
 
     try {
