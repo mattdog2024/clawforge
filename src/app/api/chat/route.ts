@@ -305,7 +305,14 @@ export async function POST(req: Request) {
   const permissionMode = body.permissionMode || permModeSetting?.value || 'confirm'
 
   // Resolve provider type for thinking mode mapping
-  const resolved = resolveProvider(session.model)
+  let resolved: ReturnType<typeof resolveProvider>
+  try {
+    resolved = resolveProvider(session.model)
+  } catch (providerErr) {
+    const errMsg = providerErr instanceof Error ? providerErr.message : String(providerErr)
+    console.error('[forge-chat] resolveProvider failed for model:', session.model, errMsg)
+    return jsonError(`Provider error: ${errMsg}`, 400)
+  }
   const providerType = resolved.provider
 
   // Get thinking mode: per-request override > provider-specific setting > global default

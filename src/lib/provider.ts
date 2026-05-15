@@ -147,6 +147,33 @@ export function resolveProvider(model?: string): ResolvedProvider {
     }
   }
 
+  // 1.5. Try legacy custom provider lookup BEFORE built-in lookup.
+  // This handles the case where session.model is stored as a raw model name (e.g. 'claude-sonnet-4-6')
+  // that also matches a built-in model. Without this, the built-in lookup would throw
+  // 'No Anthropic credentials found' before reaching the custom provider check.
+  if (model && !customModel) {
+    const legacyCustomRow = db.prepare(
+      "SELECT id, name, api_key, base_url, protocol FROM api_providers WHERE provider = 'custom' AND model_name = ? AND api_key != ''"
+    ).get(model) as { id: string; name: string; api_key: string; base_url: string; protocol?: string } | undefined
+
+    if (legacyCustomRow) {
+      const authType: 'api_key' | 'auth_token' =
+        (legacyCustomRow.protocol === 'openai-compatible') ? 'auth_token' : 'api_key'
+      const protocol: 'anthropic-compatible' | 'openai-compatible' =
+        (legacyCustomRow.protocol === 'openai-compatible') ? 'openai-compatible' : 'anthropic-compatible'
+
+      return {
+        apiKey: legacyCustomRow.api_key,
+        baseUrl: legacyCustomRow.base_url || undefined,
+        provider: 'custom',
+        providerId: legacyCustomRow.id,
+        isCliAuth: false,
+        authType,
+        protocol,
+      }
+    }
+  }
+
   // 2. Try built-in provider lookup
   const builtinProviderId = model ? MODEL_TO_PROVIDER[model] : undefined
   if (builtinProviderId) {
